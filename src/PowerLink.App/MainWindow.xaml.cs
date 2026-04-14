@@ -58,4 +58,16 @@ public sealed partial class MainWindow : Window
             }
         }
     }
+
+    private void ThemeToggleItem_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        if (Content is FrameworkElement root)
+        {
+            var current = root.ActualTheme;
+            var next = current == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
+            root.RequestedTheme = next;
+            ThemeToggleIcon.Glyph = next == ElementTheme.Dark ? "\uE706" : "\uE708";
+            ThemeToggleItem.Content = next == ElementTheme.Dark ? "Light mode" : "Dark mode";
+        }
+    }
 }

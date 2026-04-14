@@ -26,6 +26,20 @@
             </NavigationViewItem>
         </NavigationView.MenuItems>
 
+        <NavigationView.FooterMenuItems>
+            <NavigationViewItem x:Name="ThemeToggleItem"
+                                Content="Dark mode"
+                                SelectsOnInvoked="False"
+                                Tapped="ThemeToggleItem_Tapped"
+                                ToolTipService.ToolTip="Toggle light / dark theme">
+                <NavigationViewItem.Icon>
+                    <FontIcon x:Name="ThemeToggleIcon"
+                              FontFamily="{StaticResource SymbolThemeFontFamily}"
+                              Glyph="&#xE706;"/>
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+        </NavigationView.FooterMenuItems>
+
         <Frame x:Name="ContentFrame" Background="Transparent"/>
     </NavigationView>
 </Window>
