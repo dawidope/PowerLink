@@ -12,6 +12,7 @@ public record CloneResult
     public required int FilesFailed { get; init; }
     public required IReadOnlyList<string> Failures { get; init; }
     public required bool DryRun { get; init; }
+    public required string EffectiveDestPath { get; init; }
 }
 
 public class CloneEngine
@@ -39,6 +40,17 @@ public class CloneEngine
         if (!Directory.Exists(sourceFull))
             throw new DirectoryNotFoundException($"Source directory not found: {sourceFull}");
 
+        // If the destination already exists as a directory, treat it as the
+        // PARENT and create a subdirectory named after the source folder
+        // (cp -r / xcopy default behavior). If the destination doesn't exist,
+        // it IS the target and gets created as-is.
+        if (Directory.Exists(destFull))
+        {
+            var sourceName = Path.GetFileName(sourceFull.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (!string.IsNullOrEmpty(sourceName))
+                destFull = Path.Combine(destFull, sourceName);
+        }
+
         if (!Win32Hardlink.AreSameVolume(sourceFull, destFull))
             throw new InvalidOperationException(
                 $"Source and destination must be on the same volume. " +
@@ -64,6 +76,7 @@ public class CloneEngine
         {
             if (!dryRun)
                 Directory.CreateDirectory(destFull);
+            directoriesCreated++;
 
             foreach (var srcDir in Directory.EnumerateDirectories(sourceFull, "*", enumerationOptions))
             {
@@ -126,6 +139,7 @@ public class CloneEngine
             FilesFailed = failures.Count,
             Failures = failures,
             DryRun = dryRun,
+            EffectiveDestPath = destFull,
         };
     }
 

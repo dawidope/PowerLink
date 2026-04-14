@@ -169,6 +169,7 @@ public static class Program
         var progress = new ConsoleProgress();
         var result = await engine.CloneAsync(source, dest, dryRun, ct, progress);
         Console.WriteLine();
+        Console.WriteLine($"Cloned to: {result.EffectiveDestPath}");
         Console.WriteLine($"Directories: {result.DirectoriesCreated:N0}, Files linked: {result.FilesLinked:N0}, Failed: {result.FilesFailed:N0}.");
         foreach (var f in result.Failures.Take(20))
             Console.WriteLine($"  FAIL {f}");

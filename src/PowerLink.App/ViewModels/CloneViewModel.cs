@@ -73,6 +73,7 @@ public partial class CloneViewModel : ObservableObject
             var result = await _engine.CloneAsync(SourcePath, DestPath, DryRun, _cts.Token, progress);
             SummaryText =
                 $"{(result.DryRun ? "[DRY RUN] " : string.Empty)}" +
+                $"Cloned to: {result.EffectiveDestPath}\n" +
                 $"Directories: {result.DirectoriesCreated:N0}, " +
                 $"Files linked: {result.FilesLinked:N0}, Failed: {result.FilesFailed:N0}.";
             StatusText = result.FilesFailed == 0 ? "Done." : "Completed with failures.";
