@@ -24,31 +24,62 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0" Text="Hardlink inspector" Style="{ThemeResource TitleTextBlockStyle}"/>
         <TextBlock Grid.Row="1" TextWrapping="Wrap" Opacity="0.7"
-                   Text="Scans a folder and lists every file whose data is shared with other files via NTFS hardlinks. Groups show all paths inside the scan that point at the same physical file, and whether siblings exist outside."/>
+                   Text="Scans one or more folders and lists every file whose data is shared with other files via NTFS hardlinks. Groups show all paths inside the scan that point at the same physical file, and whether siblings exist outside."/>
 
         <Grid Grid.Row="2" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <TextBox Header="Folder to inspect"
-                     Text="{x:Bind ViewModel.FolderPath, Mode=TwoWay}"
-                     PlaceholderText="C:\path\to\folder"/>
-            <Button Grid.Column="1" VerticalAlignment="Bottom"
-                    Command="{x:Bind ViewModel.PickFolderCommand}">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <SymbolIcon Symbol="Folder"/>
-                    <TextBlock Text="Browse"/>
-                </StackPanel>
-            </Button>
+            <TextBlock VerticalAlignment="Center" Text="Folders to inspect" Style="{ThemeResource SubtitleTextBlockStyle}"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Command="{x:Bind ViewModel.AddFolderCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <SymbolIcon Symbol="Add"/>
+                        <TextBlock Text="Add folder"/>
+                    </StackPanel>
+                </Button>
+                <Button Command="{x:Bind ViewModel.ClearFoldersCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <SymbolIcon Symbol="Clear"/>
+                        <TextBlock Text="Clear"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
         </Grid>
 
-        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="12">
+        <Border Grid.Row="3" CornerRadius="6" BorderThickness="1"
+                BorderBrush="{ThemeResource ControlElevationBorderBrush}"
+                MaxHeight="160">
+            <ListView ItemsSource="{x:Bind ViewModel.Paths, Mode=OneWay}"
+                      SelectionMode="None">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{x:Bind}" VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <Button Grid.Column="1"
+                                    Command="{Binding ElementName=PageRoot, Path=ViewModel.RemoveFolderCommand}"
+                                    CommandParameter="{x:Bind}">
+                                <SymbolIcon Symbol="Delete"/>
+                            </Button>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Border>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="12">
             <Button Command="{x:Bind ViewModel.ScanCommand}"
                     Style="{ThemeResource AccentButtonStyle}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
@@ -64,7 +95,7 @@
             </Button>
         </StackPanel>
 
-        <StackPanel Grid.Row="4" Spacing="6">
+        <StackPanel Grid.Row="5" Spacing="6">
             <ProgressBar Value="{x:Bind ViewModel.ProgressValue, Mode=OneWay}"
                          IsIndeterminate="{x:Bind ViewModel.IsProgressIndeterminate, Mode=OneWay}"
                          Maximum="100"/>
@@ -84,7 +115,7 @@
                        FontWeight="SemiBold" TextWrapping="Wrap"/>
         </StackPanel>
 
-        <ScrollViewer Grid.Row="5" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Grid.Row="6" VerticalScrollBarVisibility="Auto">
             <ItemsControl ItemsSource="{x:Bind ViewModel.Groups, Mode=OneWay}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:HardlinkGroupViewModel">
