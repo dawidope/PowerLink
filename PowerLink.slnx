@@ -1,5 +1,8 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/PowerLink.App/PowerLink.App.csproj">
+      <Platform Project="x64" />
+    </Project>
     <Project Path="src/PowerLink.Cli/PowerLink.Cli.csproj" />
     <Project Path="src/PowerLink.Core/PowerLink.Core.csproj" />
   </Folder>

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Name="PageRoot"
+    x:Class="PowerLink.App.Pages.ClonePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:PowerLink.App.ViewModels">
+
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Clone" Style="{ThemeResource TitleTextBlockStyle}"/>
+        <TextBlock Grid.Row="1" TextWrapping="Wrap" Opacity="0.7"
+                   Text="Mirror a directory tree to a new location using hardlinks instead of file copies. The destination must be on the same NTFS volume as the source."/>
+
+        <Grid Grid.Row="2" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox Header="Source"
+                     Text="{x:Bind ViewModel.SourcePath, Mode=TwoWay}"
+                     PlaceholderText="C:\path\to\source"/>
+            <Button Grid.Column="1" VerticalAlignment="Bottom"
+                    Command="{x:Bind ViewModel.PickSourceCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <SymbolIcon Symbol="Folder"/>
+                    <TextBlock Text="Browse"/>
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <Grid Grid.Row="3" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox Header="Destination"
+                     Text="{x:Bind ViewModel.DestPath, Mode=TwoWay}"
+                     PlaceholderText="C:\path\to\destination"/>
+            <Button Grid.Column="1" VerticalAlignment="Bottom"
+                    Command="{x:Bind ViewModel.PickDestCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <SymbolIcon Symbol="Folder"/>
+                    <TextBlock Text="Browse"/>
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <CheckBox Grid.Row="4" Content="Dry run (don't touch the filesystem)"
+                  IsChecked="{x:Bind ViewModel.DryRun, Mode=TwoWay}"/>
+
+        <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="12">
+            <Button Command="{x:Bind ViewModel.RunCommand}"
+                    Style="{ThemeResource AccentButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <SymbolIcon Symbol="Play"/>
+                    <TextBlock Text="Run"/>
+                </StackPanel>
+            </Button>
+            <Button Command="{x:Bind ViewModel.CancelCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <SymbolIcon Symbol="Cancel"/>
+                    <TextBlock Text="Cancel"/>
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <StackPanel Grid.Row="6" Spacing="6">
+            <ProgressBar Value="{x:Bind ViewModel.ProgressValue, Mode=OneWay}"
+                         IsIndeterminate="{x:Bind ViewModel.IsProgressIndeterminate, Mode=OneWay}"
+                         Maximum="100"/>
+            <TextBlock Text="{x:Bind ViewModel.PhaseText, Mode=OneWay}" Opacity="0.7" FontFamily="Consolas"/>
+            <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"/>
+            <TextBlock Text="{x:Bind ViewModel.SummaryText, Mode=OneWay}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+        </StackPanel>
+    </Grid>
+</Page>
