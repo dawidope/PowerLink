@@ -86,28 +86,58 @@ public class DedupEngine
             .ToList();
 
         // Step 5: compute full hash for survivors.
+        const long subFileProgressThreshold = 16L * 1024 * 1024;
+        const long subFileReportInterval = 1L * 1024 * 1024;
+
+        var totalBytesToHash = fullHashCandidates.Sum(r => r.SizeBytes);
         long fullProcessed = 0;
+        long bytesAccumulated = 0;
+
         foreach (var record in fullHashCandidates)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            IProgress<long>? subFileProgress = null;
+            if (record.SizeBytes >= subFileProgressThreshold)
+            {
+                long lastReported = 0;
+                var capturedAccumulated = bytesAccumulated;
+                var capturedProcessed = fullProcessed;
+                subFileProgress = new Progress<long>(bytesInFile =>
+                {
+                    if (bytesInFile - lastReported < subFileReportInterval) return;
+                    lastReported = bytesInFile;
+                    progress?.Report(new ScanProgress
+                    {
+                        Phase = ScanPhase.FullHashing,
+                        FilesProcessed = capturedProcessed,
+                        TotalFiles = fullHashCandidates.Count,
+                        BytesProcessed = capturedAccumulated + bytesInFile,
+                        TotalBytes = totalBytesToHash,
+                        CurrentFile = record.FullPath,
+                    });
+                });
+            }
+
             try
             {
                 record.Hash = await HashCalculator.ComputeHashAsync(
-                    record.FullPath, cancellationToken);
+                    record.FullPath, cancellationToken, subFileProgress);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 _logger.LogWarning(ex, "Skipping unreadable file during full hash: {Path}", record.FullPath);
             }
 
+            bytesAccumulated += record.SizeBytes;
             fullProcessed++;
             progress?.Report(new ScanProgress
             {
                 Phase = ScanPhase.FullHashing,
                 FilesProcessed = fullProcessed,
                 TotalFiles = fullHashCandidates.Count,
-                BytesProcessed = fullProcessed == 0 ? 0 : fullHashCandidates.Take((int)fullProcessed).Sum(r => r.SizeBytes),
-                TotalBytes = fullHashCandidates.Sum(r => r.SizeBytes),
+                BytesProcessed = bytesAccumulated,
+                TotalBytes = totalBytesToHash,
                 CurrentFile = record.FullPath,
             });
         }

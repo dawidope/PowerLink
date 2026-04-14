@@ -99,7 +99,30 @@
             <ProgressBar Value="{x:Bind ViewModel.ProgressValue, Mode=OneWay}"
                          IsIndeterminate="{x:Bind ViewModel.IsProgressIndeterminate, Mode=OneWay}"
                          Maximum="100"/>
-            <TextBlock Text="{x:Bind ViewModel.PhaseText, Mode=OneWay}" Opacity="0.7" FontFamily="Consolas"/>
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Spacing="2">
+                    <TextBlock Text="{x:Bind ViewModel.PhaseText, Mode=OneWay}" FontWeight="SemiBold"/>
+                    <TextBlock Text="{x:Bind ViewModel.CurrentFileText, Mode=OneWay}"
+                               Opacity="0.6" FontFamily="Consolas" FontSize="12"
+                               TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="2" HorizontalAlignment="Right">
+                    <TextBlock Text="{x:Bind ViewModel.FilesText, Mode=OneWay}" FontFamily="Consolas"/>
+                    <TextBlock Text="{x:Bind ViewModel.BytesText, Mode=OneWay}"
+                               Opacity="0.7" FontFamily="Consolas" FontSize="12"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="2" HorizontalAlignment="Right" MinWidth="140">
+                    <TextBlock Text="{x:Bind ViewModel.SpeedText, Mode=OneWay}"
+                               FontFamily="Consolas" Foreground="{ThemeResource SystemAccentColor}"/>
+                    <TextBlock Text="{x:Bind ViewModel.EtaText, Mode=OneWay}"
+                               Opacity="0.7" FontFamily="Consolas" FontSize="12"/>
+                </StackPanel>
+            </Grid>
             <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"/>
             <TextBlock Text="{x:Bind ViewModel.SummaryText, Mode=OneWay}" FontWeight="SemiBold" TextWrapping="Wrap"/>
         </StackPanel>

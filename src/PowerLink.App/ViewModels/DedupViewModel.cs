@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PowerLink.App.Services;
@@ -14,6 +15,11 @@ public partial class DedupViewModel : ObservableObject
     private readonly DedupEngine _engine = new();
     private readonly DedupExecutor _executor = new();
     private CancellationTokenSource? _cts;
+
+    private readonly Stopwatch _phaseStopwatch = new();
+    private ScanPhase? _currentPhase;
+    private DateTime _lastUiFlush = DateTime.MinValue;
+    private const int UiUpdateIntervalMs = 100;
 
     public ObservableCollection<string> Paths { get; } = new();
     public ObservableCollection<DuplicateGroupViewModel> Groups { get; } = new();
@@ -39,6 +45,11 @@ public partial class DedupViewModel : ObservableObject
     [ObservableProperty] private string _statusText = "Ready.";
     [ObservableProperty] private string? _summaryText;
     [ObservableProperty] private string? _phaseText;
+    [ObservableProperty] private string? _filesText;
+    [ObservableProperty] private string? _bytesText;
+    [ObservableProperty] private string? _speedText;
+    [ObservableProperty] private string? _etaText;
+    [ObservableProperty] private string? _currentFileText;
     [ObservableProperty] private double _progressValue;
     [ObservableProperty] private bool _isProgressIndeterminate;
 
@@ -73,8 +84,7 @@ public partial class DedupViewModel : ObservableObject
         Plan = null;
         SummaryText = null;
         StatusText = "Scanning...";
-        IsProgressIndeterminate = true;
-        ProgressValue = 0;
+        ResetProgress(indeterminate: true);
 
         _cts = new CancellationTokenSource();
         var progress = new Progress<ScanProgress>(OnProgress);
@@ -106,9 +116,7 @@ public partial class DedupViewModel : ObservableObject
         finally
         {
             IsScanning = false;
-            IsProgressIndeterminate = false;
-            ProgressValue = 0;
-            PhaseText = null;
+            ClearProgress();
         }
     }
 
@@ -119,8 +127,7 @@ public partial class DedupViewModel : ObservableObject
 
         IsExecuting = true;
         StatusText = $"Executing {Plan.ActionCount:N0} actions...";
-        IsProgressIndeterminate = false;
-        ProgressValue = 0;
+        ResetProgress(indeterminate: false);
 
         _cts = new CancellationTokenSource();
         var progress = new Progress<ScanProgress>(OnProgress);
@@ -146,8 +153,7 @@ public partial class DedupViewModel : ObservableObject
         finally
         {
             IsExecuting = false;
-            ProgressValue = 0;
-            PhaseText = null;
+            ClearProgress();
         }
     }
 
@@ -160,20 +166,109 @@ public partial class DedupViewModel : ObservableObject
 
     private void OnProgress(ScanProgress p)
     {
-        PhaseText = p.TotalFiles > 0
-            ? $"{p.Phase}: {p.FilesProcessed:N0} / {p.TotalFiles:N0}"
-            : $"{p.Phase}: {p.FilesProcessed:N0}";
-
-        if (p.TotalFiles > 0)
+        if (_currentPhase != p.Phase)
         {
+            _currentPhase = p.Phase;
+            _phaseStopwatch.Restart();
+            _lastUiFlush = DateTime.MinValue;
+        }
+
+        var isFinalForPhase = p.TotalFiles > 0 && p.FilesProcessed >= p.TotalFiles;
+        var now = DateTime.UtcNow;
+        if (!isFinalForPhase && (now - _lastUiFlush).TotalMilliseconds < UiUpdateIntervalMs)
+            return;
+        _lastUiFlush = now;
+
+        PhaseText = FormatPhase(p.Phase);
+        FilesText = p.TotalFiles > 0
+            ? $"{p.FilesProcessed:N0} / {p.TotalFiles:N0} files"
+            : $"{p.FilesProcessed:N0} files";
+        CurrentFileText = string.IsNullOrEmpty(p.CurrentFile)
+            ? null
+            : Path.GetFileName(p.CurrentFile);
+
+        var elapsedSec = _phaseStopwatch.Elapsed.TotalSeconds;
+        var hasBytes = p.Phase == ScanPhase.FullHashing && p.TotalBytes > 0;
+
+        if (hasBytes)
+        {
+            BytesText = $"{FormatBytes(p.BytesProcessed)} / {FormatBytes(p.TotalBytes)}";
+
+            if (elapsedSec >= 0.5 && p.BytesProcessed > 0)
+            {
+                var bytesPerSec = p.BytesProcessed / elapsedSec;
+                SpeedText = $"{FormatBytes((long)bytesPerSec)}/s";
+                var remaining = p.TotalBytes - p.BytesProcessed;
+                EtaText = bytesPerSec > 0 ? $"ETA {FormatDuration(remaining / bytesPerSec)}" : null;
+            }
+
+            IsProgressIndeterminate = false;
+            ProgressValue = (double)p.BytesProcessed / p.TotalBytes * 100.0;
+        }
+        else if (p.TotalFiles > 0)
+        {
+            BytesText = null;
+
+            if (elapsedSec >= 0.5 && p.FilesProcessed > 0)
+            {
+                var filesPerSec = p.FilesProcessed / elapsedSec;
+                SpeedText = $"{filesPerSec:F0} files/s";
+                var remainingFiles = p.TotalFiles - p.FilesProcessed;
+                EtaText = filesPerSec > 0 ? $"ETA {FormatDuration(remainingFiles / filesPerSec)}" : null;
+            }
+
             IsProgressIndeterminate = false;
             ProgressValue = (double)p.FilesProcessed / p.TotalFiles * 100.0;
         }
         else
         {
             IsProgressIndeterminate = true;
+            BytesText = null;
+            if (elapsedSec >= 0.5 && p.FilesProcessed > 0)
+            {
+                var filesPerSec = p.FilesProcessed / elapsedSec;
+                SpeedText = $"{filesPerSec:F0} files/s";
+            }
+            EtaText = null;
         }
     }
+
+    private void ResetProgress(bool indeterminate)
+    {
+        _currentPhase = null;
+        _phaseStopwatch.Reset();
+        _lastUiFlush = DateTime.MinValue;
+        IsProgressIndeterminate = indeterminate;
+        ProgressValue = 0;
+        PhaseText = null;
+        FilesText = null;
+        BytesText = null;
+        SpeedText = null;
+        EtaText = null;
+        CurrentFileText = null;
+    }
+
+    private void ClearProgress()
+    {
+        IsProgressIndeterminate = false;
+        ProgressValue = 0;
+        PhaseText = null;
+        FilesText = null;
+        BytesText = null;
+        SpeedText = null;
+        EtaText = null;
+        CurrentFileText = null;
+    }
+
+    private static string FormatPhase(ScanPhase phase) => phase switch
+    {
+        ScanPhase.Enumerating => "Enumerating files",
+        ScanPhase.PrefixHashing => "Hashing prefixes",
+        ScanPhase.FullHashing => "Hashing files",
+        ScanPhase.Planning => "Planning",
+        ScanPhase.Executing => "Executing",
+        _ => phase.ToString(),
+    };
 
     private static string FormatBytes(long bytes)
     {
@@ -182,5 +277,14 @@ public partial class DedupViewModel : ObservableObject
         var unit = 0;
         while (size >= 1024 && unit < units.Length - 1) { size /= 1024; unit++; }
         return $"{size:F2} {units[unit]}";
+    }
+
+    private static string FormatDuration(double seconds)
+    {
+        if (double.IsInfinity(seconds) || double.IsNaN(seconds) || seconds < 0) return "?";
+        var t = TimeSpan.FromSeconds(seconds);
+        if (t.TotalHours >= 1) return $"{(int)t.TotalHours}h {t.Minutes}m";
+        if (t.TotalMinutes >= 1) return $"{t.Minutes}m {t.Seconds}s";
+        return $"{t.Seconds}s";
     }
 }
