@@ -55,6 +55,9 @@ public sealed partial class MainWindow : Window
                 case "clone":
                     ContentFrame.Navigate(typeof(ClonePage));
                     break;
+                case "inspector":
+                    ContentFrame.Navigate(typeof(InspectorPage));
+                    break;
                 case "settings":
                     ContentFrame.Navigate(typeof(SettingsPage));
                     break;

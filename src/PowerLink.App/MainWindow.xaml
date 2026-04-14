@@ -24,6 +24,11 @@
                     <SymbolIcon Symbol="Folder"/>
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItem Content="Inspector" Tag="inspector">
+                <NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="Find"/>
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
             <NavigationViewItem Content="Settings" Tag="settings">
                 <NavigationViewItem.Icon>
                     <SymbolIcon Symbol="Setting"/>
