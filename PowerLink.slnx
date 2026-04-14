@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PowerLink.Cli/PowerLink.Cli.csproj" />
+    <Project Path="src/PowerLink.Core/PowerLink.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PowerLink.Core.Tests/PowerLink.Core.Tests.csproj" />
+  </Folder>
+</Solution>
