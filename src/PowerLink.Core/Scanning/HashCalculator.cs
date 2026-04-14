@@ -10,20 +10,22 @@ public static class HashCalculator
     public static async Task<string> ComputeHashAsync(
         string path,
         CancellationToken cancellationToken = default,
-        IProgress<long>? bytesProgress = null)
+        IProgress<long>? bytesProgress = null,
+        int bufferSize = DefaultBufferSize)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentOutOfRangeException.ThrowIfLessThan(bufferSize, 1024);
 
         await using var stream = new FileStream(
             path,
             FileMode.Open,
             FileAccess.Read,
             FileShare.Read | FileShare.Delete,
-            DefaultBufferSize,
+            bufferSize,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
 
         var hasher = new XxHash128();
-        var buffer = new byte[DefaultBufferSize];
+        var buffer = new byte[bufferSize];
         long totalRead = 0;
 
         while (true)

@@ -27,6 +27,16 @@ public partial class DedupViewModel : ObservableObject
     [ObservableProperty] private double _minSizeMiB = 1;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BufferSizeKiB))]
+    [NotifyPropertyChangedFor(nameof(BufferSizeText))]
+    private double _bufferSizeLog2 = 6; // 2^6 = 64 KiB
+
+    public int BufferSizeKiB => 1 << (int)BufferSizeLog2;
+    public string BufferSizeText => BufferSizeKiB >= 1024
+        ? $"{BufferSizeKiB / 1024} MiB"
+        : $"{BufferSizeKiB} KiB";
+
+    [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ScanCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExecuteDedupCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
@@ -92,22 +102,27 @@ public partial class DedupViewModel : ObservableObject
         try
         {
             var minBytes = (long)(MinSizeMiB * 1024 * 1024);
+            var bufferBytes = BufferSizeKiB * 1024;
             var records = await _scanner.ScanAsync(Paths, minBytes, _cts.Token, progress);
-            var result = await _engine.AnalyzeAsync(records, _cts.Token, progress);
+            var result = await _engine.AnalyzeAsync(records, _cts.Token, progress, bufferBytes);
 
             foreach (var g in result.Groups)
                 Groups.Add(new DuplicateGroupViewModel(g));
 
             Plan = DedupEngine.CreatePlan(result);
+
+            var prefix = result.WasCancelled ? "Stopped. Partial: " : string.Empty;
             SummaryText =
-                $"Scanned {result.TotalFilesScanned:N0} files in {result.ScanDuration.TotalSeconds:F1}s. " +
+                $"{prefix}Scanned {result.TotalFilesScanned:N0} files in {result.ScanDuration.TotalSeconds:F1}s. " +
                 $"Found {result.Groups.Count:N0} groups, {result.TotalDuplicates:N0} duplicates, " +
                 $"recoverable: {FormatBytes(result.TotalWastedBytes)}.";
-            StatusText = result.Groups.Count == 0 ? "No duplicates found." : "Scan complete.";
+            StatusText = result.WasCancelled
+                ? "Stopped. Showing partial results — you can still deduplicate."
+                : (result.Groups.Count == 0 ? "No duplicates found." : "Scan complete.");
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Cancelled.";
+            StatusText = "Cancelled before scan completed.";
         }
         catch (Exception ex)
         {

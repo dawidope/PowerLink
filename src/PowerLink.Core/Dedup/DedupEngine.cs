@@ -18,15 +18,17 @@ public class DedupEngine
     public async Task<ScanResult> AnalyzeAsync(
         IReadOnlyList<FileRecord> records,
         CancellationToken cancellationToken = default,
-        IProgress<ScanProgress>? progress = null)
+        IProgress<ScanProgress>? progress = null,
+        int hashBufferSize = HashCalculator.DefaultBufferSize)
     {
         ArgumentNullException.ThrowIfNull(records);
+        ArgumentOutOfRangeException.ThrowIfLessThan(hashBufferSize, 1024);
 
         var stopwatch = Stopwatch.StartNew();
         var totalBytes = records.Sum(r => r.SizeBytes);
+        var wasCancelled = false;
 
         // Step 1: collapse entries that point to the same physical file (same volume + fileIndex).
-        // This covers overlapping roots and pre-existing hardlinks.
         var physicallyUnique = records
             .GroupBy(r => (r.VolumeSerialNumber, r.FileIndex))
             .Select(g => g.First())
@@ -36,56 +38,62 @@ public class DedupEngine
             "Scanned {Count} records, {Unique} physically unique",
             records.Count, physicallyUnique.Count);
 
-        // Step 2: group by (volume, size) — hardlinks only work within a volume,
-        // and different sizes cannot be duplicates.
+        // Step 2: group by (volume, size).
         var sizeCandidates = physicallyUnique
             .GroupBy(r => (r.VolumeSerialNumber, r.SizeBytes))
             .Where(g => g.Count() > 1)
             .ToList();
 
-        // Step 3: for each size group, compute prefix hash to prune further.
+        // Step 3: prefix hash.
         var prefixCandidates = new List<FileRecord>();
         long prefixProcessed = 0;
         var totalPrefixCandidates = sizeCandidates.Sum(g => g.Count());
 
-        foreach (var group in sizeCandidates)
+        try
         {
-            foreach (var record in group)
+            foreach (var group in sizeCandidates)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                try
+                foreach (var record in group)
                 {
-                    record.PrefixHash = await HashCalculator.ComputePrefixHashAsync(
-                        record.FullPath, cancellationToken: cancellationToken);
-                    prefixCandidates.Add(record);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    _logger.LogWarning(ex, "Skipping unreadable file during prefix hash: {Path}", record.FullPath);
-                }
-
-                prefixProcessed++;
-                if (prefixProcessed % 25 == 0)
-                {
-                    progress?.Report(new ScanProgress
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
                     {
-                        Phase = ScanPhase.PrefixHashing,
-                        FilesProcessed = prefixProcessed,
-                        TotalFiles = totalPrefixCandidates,
-                        CurrentFile = record.FullPath,
-                    });
+                        record.PrefixHash = await HashCalculator.ComputePrefixHashAsync(
+                            record.FullPath, cancellationToken: cancellationToken);
+                        prefixCandidates.Add(record);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        _logger.LogWarning(ex, "Skipping unreadable file during prefix hash: {Path}", record.FullPath);
+                    }
+
+                    prefixProcessed++;
+                    if (prefixProcessed % 25 == 0)
+                    {
+                        progress?.Report(new ScanProgress
+                        {
+                            Phase = ScanPhase.PrefixHashing,
+                            FilesProcessed = prefixProcessed,
+                            TotalFiles = totalPrefixCandidates,
+                            CurrentFile = record.FullPath,
+                        });
+                    }
                 }
             }
         }
+        catch (OperationCanceledException)
+        {
+            wasCancelled = true;
+        }
 
-        // Step 4: group by (volume, size, prefixHash), keep groups with >1.
+        // Step 4: group by (volume, size, prefixHash).
         var fullHashCandidates = prefixCandidates
             .GroupBy(r => (r.VolumeSerialNumber, r.SizeBytes, r.PrefixHash))
             .Where(g => g.Count() > 1)
             .SelectMany(g => g)
             .ToList();
 
-        // Step 5: compute full hash for survivors.
+        // Step 5: full hash.
         const long subFileProgressThreshold = 16L * 1024 * 1024;
         const long subFileReportInterval = 1L * 1024 * 1024;
 
@@ -93,56 +101,66 @@ public class DedupEngine
         long fullProcessed = 0;
         long bytesAccumulated = 0;
 
-        foreach (var record in fullHashCandidates)
+        if (!wasCancelled)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            IProgress<long>? subFileProgress = null;
-            if (record.SizeBytes >= subFileProgressThreshold)
+            try
             {
-                long lastReported = 0;
-                var capturedAccumulated = bytesAccumulated;
-                var capturedProcessed = fullProcessed;
-                subFileProgress = new Progress<long>(bytesInFile =>
+                foreach (var record in fullHashCandidates)
                 {
-                    if (bytesInFile - lastReported < subFileReportInterval) return;
-                    lastReported = bytesInFile;
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    IProgress<long>? subFileProgress = null;
+                    if (record.SizeBytes >= subFileProgressThreshold)
+                    {
+                        long lastReported = 0;
+                        var capturedAccumulated = bytesAccumulated;
+                        var capturedProcessed = fullProcessed;
+                        subFileProgress = new Progress<long>(bytesInFile =>
+                        {
+                            if (bytesInFile - lastReported < subFileReportInterval) return;
+                            lastReported = bytesInFile;
+                            progress?.Report(new ScanProgress
+                            {
+                                Phase = ScanPhase.FullHashing,
+                                FilesProcessed = capturedProcessed,
+                                TotalFiles = fullHashCandidates.Count,
+                                BytesProcessed = capturedAccumulated + bytesInFile,
+                                TotalBytes = totalBytesToHash,
+                                CurrentFile = record.FullPath,
+                            });
+                        });
+                    }
+
+                    try
+                    {
+                        record.Hash = await HashCalculator.ComputeHashAsync(
+                            record.FullPath, cancellationToken, subFileProgress, hashBufferSize);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        _logger.LogWarning(ex, "Skipping unreadable file during full hash: {Path}", record.FullPath);
+                    }
+
+                    bytesAccumulated += record.SizeBytes;
+                    fullProcessed++;
                     progress?.Report(new ScanProgress
                     {
                         Phase = ScanPhase.FullHashing,
-                        FilesProcessed = capturedProcessed,
+                        FilesProcessed = fullProcessed,
                         TotalFiles = fullHashCandidates.Count,
-                        BytesProcessed = capturedAccumulated + bytesInFile,
+                        BytesProcessed = bytesAccumulated,
                         TotalBytes = totalBytesToHash,
                         CurrentFile = record.FullPath,
                     });
-                });
+                }
             }
-
-            try
+            catch (OperationCanceledException)
             {
-                record.Hash = await HashCalculator.ComputeHashAsync(
-                    record.FullPath, cancellationToken, subFileProgress);
+                wasCancelled = true;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                _logger.LogWarning(ex, "Skipping unreadable file during full hash: {Path}", record.FullPath);
-            }
-
-            bytesAccumulated += record.SizeBytes;
-            fullProcessed++;
-            progress?.Report(new ScanProgress
-            {
-                Phase = ScanPhase.FullHashing,
-                FilesProcessed = fullProcessed,
-                TotalFiles = fullHashCandidates.Count,
-                BytesProcessed = bytesAccumulated,
-                TotalBytes = totalBytesToHash,
-                CurrentFile = record.FullPath,
-            });
         }
 
-        // Step 6: form duplicate groups by (volume, size, hash).
+        // Step 6: form duplicate groups from whatever hashes we got.
         var groups = fullHashCandidates
             .Where(r => r.Hash is not null)
             .GroupBy(r => (r.VolumeSerialNumber, r.SizeBytes, r.Hash!))
@@ -164,6 +182,7 @@ public class DedupEngine
             TotalFilesScanned = records.Count,
             TotalBytesScanned = totalBytes,
             ScanDuration = stopwatch.Elapsed,
+            WasCancelled = wasCancelled,
         };
     }
 

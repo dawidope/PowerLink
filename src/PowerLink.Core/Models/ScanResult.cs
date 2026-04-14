@@ -6,6 +6,7 @@ public record ScanResult
     public required long TotalFilesScanned { get; init; }
     public required long TotalBytesScanned { get; init; }
     public required TimeSpan ScanDuration { get; init; }
+    public bool WasCancelled { get; init; }
 
     public long TotalDuplicates => Groups.Sum(g => (long)g.Duplicates.Count());
     public long TotalWastedBytes => Groups.Sum(g => g.WastedBytes);
