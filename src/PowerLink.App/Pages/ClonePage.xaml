@@ -25,21 +25,31 @@
 
         <TextBlock Grid.Row="0" Text="Clone" Style="{ThemeResource TitleTextBlockStyle}"/>
         <TextBlock Grid.Row="1" TextWrapping="Wrap" Opacity="0.7"
-                   Text="Mirror a directory tree to a new location using hardlinks instead of file copies. The destination must be on the same NTFS volume as the source."/>
+                   Text="Hardlink a single file or mirror a whole directory tree to a new location. The destination must be on the same NTFS volume as the source."/>
 
         <Grid Grid.Row="2" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <TextBox Header="Source"
+            <TextBox Header="Source (file or folder)"
                      Text="{x:Bind ViewModel.SourcePath, Mode=TwoWay}"
                      PlaceholderText="C:\path\to\source"/>
             <Button Grid.Column="1" VerticalAlignment="Bottom"
-                    Command="{x:Bind ViewModel.PickSourceCommand}">
+                    Command="{x:Bind ViewModel.PickSourceFolderCommand}"
+                    ToolTipService.ToolTip="Pick a folder">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <SymbolIcon Symbol="Folder"/>
-                    <TextBlock Text="Browse"/>
+                    <TextBlock Text="Folder"/>
+                </StackPanel>
+            </Button>
+            <Button Grid.Column="2" VerticalAlignment="Bottom"
+                    Command="{x:Bind ViewModel.PickSourceFileCommand}"
+                    ToolTipService.ToolTip="Pick a single file">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <SymbolIcon Symbol="Document"/>
+                    <TextBlock Text="File"/>
                 </StackPanel>
             </Button>
         </Grid>

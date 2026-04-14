@@ -71,7 +71,7 @@ public partial class DedupViewModel : ObservableObject
     [RelayCommand]
     private async Task AddFolderAsync()
     {
-        var path = await FolderPickerService.PickFolderAsync();
+        var path = await PickerService.PickFolderAsync();
         if (path is not null && !Paths.Contains(path))
             Paths.Add(path);
     }

@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using PowerLink.App.Services;
 using PowerLink.Core.Clone;
 using PowerLink.Core.Models;
+using PowerLink.Core.Native;
 
 namespace PowerLink.App.ViewModels;
 
@@ -42,16 +43,23 @@ public partial class CloneViewModel : ObservableObject
     [ObservableProperty] private bool _isProgressIndeterminate;
 
     [RelayCommand]
-    private async Task PickSourceAsync()
+    private async Task PickSourceFolderAsync()
     {
-        var path = await FolderPickerService.PickFolderAsync();
+        var path = await PickerService.PickFolderAsync();
+        if (path is not null) SourcePath = path;
+    }
+
+    [RelayCommand]
+    private async Task PickSourceFileAsync()
+    {
+        var path = await PickerService.PickFileAsync();
         if (path is not null) SourcePath = path;
     }
 
     [RelayCommand]
     private async Task PickDestAsync()
     {
-        var path = await FolderPickerService.PickFolderAsync();
+        var path = await PickerService.PickFolderAsync();
         if (path is not null) DestPath = path;
     }
 
@@ -61,25 +69,46 @@ public partial class CloneViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(SourcePath) || string.IsNullOrWhiteSpace(DestPath)) return;
 
         IsRunning = true;
-        StatusText = DryRun ? "Dry run..." : "Cloning...";
         SummaryText = null;
         ResetProgress(indeterminate: true);
         _phaseStopwatch.Restart();
         _cts = new CancellationTokenSource();
-        var progress = new Progress<ScanProgress>(OnProgress);
 
         try
         {
-            var result = await _engine.CloneAsync(SourcePath, DestPath, DryRun, _cts.Token, progress);
-            SummaryText =
-                $"{(result.DryRun ? "[DRY RUN] " : string.Empty)}" +
-                $"Cloned to: {result.EffectiveDestPath}\n" +
-                $"Directories: {result.DirectoriesCreated:N0}, " +
-                $"Files linked: {result.FilesLinked:N0}, Failed: {result.FilesFailed:N0}.";
-            StatusText = result.FilesFailed == 0 ? "Done." : "Completed with failures.";
+            var sourceFull = Path.GetFullPath(SourcePath);
+            var destFull = Path.GetFullPath(DestPath);
+
+            if (File.Exists(sourceFull))
+            {
+                StatusText = DryRun ? "Dry run (file)..." : "Hardlinking file...";
+                await LinkSingleFileAsync(sourceFull, destFull);
+            }
+            else if (Directory.Exists(sourceFull))
+            {
+                StatusText = DryRun ? "Dry run (folder)..." : "Cloning folder...";
+                var progress = new Progress<ScanProgress>(OnProgress);
+                var result = await _engine.CloneAsync(sourceFull, destFull, DryRun, _cts.Token, progress);
+                SummaryText =
+                    $"{(result.DryRun ? "[DRY RUN] " : string.Empty)}" +
+                    $"Cloned to: {result.EffectiveDestPath}\n" +
+                    $"Directories: {result.DirectoriesCreated:N0}, " +
+                    $"Files linked: {result.FilesLinked:N0}, Failed: {result.FilesFailed:N0}.";
+                StatusText = result.FilesFailed == 0 ? "Done." : "Completed with failures.";
+            }
+            else
+            {
+                StatusText = $"Source not found: {sourceFull}";
+            }
         }
-        catch (OperationCanceledException) { StatusText = "Cancelled."; }
-        catch (Exception ex) { StatusText = $"Error: {ex.Message}"; }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Cancelled.";
+        }
+        catch (Exception ex)
+        {
+            (StatusText, SummaryText) = FormatFriendlyError(ex);
+        }
         finally
         {
             IsRunning = false;
@@ -87,6 +116,72 @@ public partial class CloneViewModel : ObservableObject
             ClearProgress();
         }
     }
+
+    private async Task LinkSingleFileAsync(string sourceFile, string destDir)
+    {
+        var ct = _cts!.Token;
+        var dryRun = DryRun;
+        var linkPath = Path.Combine(destDir, Path.GetFileName(sourceFile));
+
+        // Friendly pre-checks done on UI thread so we can short-circuit
+        // before the background work and surface a readable message.
+        if (string.Equals(linkPath, sourceFile, StringComparison.OrdinalIgnoreCase))
+        {
+            StatusText = "Source and destination are the same.";
+            SummaryText = "Pick a different destination folder than the file's own folder.";
+            return;
+        }
+        if (File.Exists(linkPath))
+        {
+            StatusText = "A file with that name already exists in the destination.";
+            SummaryText = $"Cannot overwrite: {linkPath}";
+            return;
+        }
+        if (!Win32Hardlink.AreSameVolume(sourceFile, destDir))
+        {
+            StatusText = "Source and destination are on different volumes.";
+            SummaryText = "Hardlinks only work within a single NTFS volume.";
+            return;
+        }
+
+        // All filesystem work runs on a background thread; UI properties are
+        // assigned only after we're back on the dispatcher to avoid
+        // RPC_E_WRONG_THREAD on the x:Bind setter.
+        var destExisted = await Task.Run(() =>
+        {
+            var existed = Directory.Exists(destDir);
+            if (!existed && !dryRun)
+                Directory.CreateDirectory(destDir);
+            if (!dryRun)
+                Win32Hardlink.CreateHardLink(linkPath, sourceFile);
+            return existed;
+        }, ct);
+
+        SummaryText = dryRun
+            ? (destExisted
+                ? $"[DRY RUN] Would hardlink: {linkPath} -> {sourceFile}"
+                : $"[DRY RUN] Would create {destDir} then hardlink {Path.GetFileName(sourceFile)} into it")
+            : $"Hardlinked: {linkPath} -> {sourceFile}";
+
+        StatusText = "Done.";
+    }
+
+    private static (string Status, string Summary) FormatFriendlyError(Exception ex) => ex switch
+    {
+        IOException io when io.HResult == unchecked((int)0x800700B7) || io.Message.Contains("Win32 error 183")
+            => ("Target already exists.", "A file or folder with that name already exists in the destination."),
+        IOException io when io.HResult == unchecked((int)0x80070005) || io.Message.Contains("Win32 error 5")
+            => ("Access denied.", "Windows refused the operation. Check folder permissions or that the file isn't open in another program."),
+        IOException io when io.HResult == unchecked((int)0x80070020) || io.Message.Contains("Win32 error 32")
+            => ("File is in use.", "Another process is holding the source or target file open. Close it and retry."),
+        UnauthorizedAccessException
+            => ("Access denied.", ex.Message),
+        InvalidOperationException
+            => ("Operation not allowed.", ex.Message),
+        DirectoryNotFoundException
+            => ("Not found.", ex.Message),
+        _ => ($"Error: {ex.GetType().Name}", ex.Message),
+    };
 
     [RelayCommand(CanExecute = nameof(CanCancelOp))]
     private void Cancel() => _cts?.Cancel();
