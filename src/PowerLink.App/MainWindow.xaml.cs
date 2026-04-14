@@ -1,5 +1,7 @@
+using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Windowing;
 using PowerLink.App.Pages;
 
@@ -12,7 +14,16 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         Title = "PowerLink";
         SetWindowIcon();
+        SetMicaBackdrop();
         ContentFrame.Navigate(typeof(DedupPage));
+    }
+
+    private void SetMicaBackdrop()
+    {
+        // Mica is supported on Windows 11; on older versions the property
+        // assignment is a no-op (graceful degradation to opaque background).
+        if (MicaController.IsSupported())
+            SystemBackdrop = new MicaBackdrop { Kind = MicaKind.Base };
     }
 
     private void SetWindowIcon()

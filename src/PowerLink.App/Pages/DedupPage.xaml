@@ -6,7 +6,14 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:PowerLink.App.ViewModels"
     xmlns:conv="using:PowerLink.App.Converters"
-    xmlns:num="using:Windows.Globalization.NumberFormatting">
+    xmlns:num="using:Windows.Globalization.NumberFormatting"
+    Background="Transparent">
+
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator Key="F5"     Invoked="OnScanAccelerator"/>
+        <KeyboardAccelerator Key="Escape" Invoked="OnStopAccelerator"/>
+        <KeyboardAccelerator Key="Enter"  Modifiers="Control" Invoked="OnExecuteAccelerator"/>
+    </Page.KeyboardAccelerators>
 
     <Page.Resources>
         <conv:BytesToHumanConverter x:Key="BytesToHuman"/>

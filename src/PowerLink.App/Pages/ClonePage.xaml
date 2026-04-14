@@ -4,7 +4,13 @@
     x:Class="PowerLink.App.Pages.ClonePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:vm="using:PowerLink.App.ViewModels">
+    xmlns:vm="using:PowerLink.App.ViewModels"
+    Background="Transparent">
+
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator Key="F5"     Invoked="OnRunAccelerator"/>
+        <KeyboardAccelerator Key="Escape" Invoked="OnStopAccelerator"/>
+    </Page.KeyboardAccelerators>
 
     <Grid Padding="24" RowSpacing="12">
         <Grid.RowDefinitions>
