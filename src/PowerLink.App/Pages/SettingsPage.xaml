@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Name="PageRoot"
+    x:Class="PowerLink.App.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:PowerLink.App.ViewModels"
+    Background="Transparent">
+
+    <ScrollViewer>
+        <Grid Padding="24" RowSpacing="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Settings" Style="{ThemeResource TitleTextBlockStyle}"/>
+
+            <Border Grid.Row="1" CornerRadius="8" Padding="20" BorderThickness="1"
+                    BorderBrush="{ThemeResource ControlElevationBorderBrush}"
+                    Background="{ThemeResource SubtleFillColorTransparentBrush}">
+                <StackPanel Spacing="12">
+                    <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Explorer context menu"/>
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75"
+                               Text="Adds 'PowerLink: Pick as link source' on files/folders and 'PowerLink: Drop as hardlink here' inside folders. Per-user, no admin required."/>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="Status:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource SystemAccentColor}"/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Command="{x:Bind ViewModel.InstallCommand}"
+                                Style="{ThemeResource AccentButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <SymbolIcon Symbol="Add"/>
+                                <TextBlock Text="Install"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{x:Bind ViewModel.UninstallCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <SymbolIcon Symbol="Delete"/>
+                                <TextBlock Text="Uninstall"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{x:Bind ViewModel.RestartExplorerCommand}"
+                                ToolTipService.ToolTip="Restart explorer.exe so menu changes take effect">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <SymbolIcon Symbol="Refresh"/>
+                                <TextBlock Text="Restart Explorer"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2" Margin="0,4,0,0">
+                        <TextBlock Text="CLI path detected:" FontWeight="SemiBold" Opacity="0.7"/>
+                        <TextBlock Text="{x:Bind ViewModel.CliPath, Mode=OneWay}"
+                                   FontFamily="Consolas" Opacity="0.7"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Row="2" CornerRadius="8" Padding="20" BorderThickness="1"
+                    BorderBrush="{ThemeResource ControlElevationBorderBrush}"
+                    Background="{ThemeResource SubtleFillColorTransparentBrush}">
+                <StackPanel Spacing="12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Currently picked source"/>
+                        <Button Grid.Column="1"
+                                Command="{x:Bind ViewModel.RefreshPickedCommand}"
+                                Background="Transparent" BorderBrush="Transparent"
+                                ToolTipService.ToolTip="Refresh">
+                            <SymbolIcon Symbol="Refresh"/>
+                        </Button>
+                    </Grid>
+                    <TextBlock Text="{x:Bind ViewModel.PickedPathText, Mode=OneWay}"
+                               TextWrapping="Wrap" FontFamily="Consolas"
+                               Visibility="{x:Bind ViewModel.PickedVisibility, Mode=OneWay}"/>
+                    <TextBlock Text="Nothing picked yet. Right-click a file or folder in Explorer and choose 'PowerLink: Pick as link source'."
+                               TextWrapping="Wrap" Opacity="0.6"
+                               Visibility="{x:Bind ViewModel.NoPickVisibility, Mode=OneWay}"/>
+                    <Button Command="{x:Bind ViewModel.ClearPickCommand}" HorizontalAlignment="Left">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <SymbolIcon Symbol="Clear"/>
+                            <TextBlock Text="Clear pick"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Grid.Row="3" Opacity="0.5" FontSize="12"
+                       Text="PowerLink — registry-based context menu (Phase 2). After installing, restart Explorer once."/>
+        </Grid>
+    </ScrollViewer>
+</Page>

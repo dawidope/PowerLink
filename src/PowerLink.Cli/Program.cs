@@ -2,7 +2,9 @@ using System.CommandLine;
 using PowerLink.Core.Clone;
 using PowerLink.Core.Dedup;
 using PowerLink.Core.Models;
+using PowerLink.Core.Native;
 using PowerLink.Core.Scanning;
+using PowerLink.Core.State;
 
 namespace PowerLink.Cli;
 
@@ -14,6 +16,8 @@ public static class Program
         root.Add(BuildScanCommand());
         root.Add(BuildDedupCommand());
         root.Add(BuildCloneCommand());
+        root.Add(BuildPickCommand());
+        root.Add(BuildDropCommand());
         return root.Parse(args).InvokeAsync();
     }
 
@@ -97,6 +101,95 @@ public static class Program
         });
 
         return cmd;
+    }
+
+    private static Command BuildPickCommand()
+    {
+        var pathArg = new Argument<string>("path") { Description = "File or folder to remember as the link source." };
+        var cmd = new Command("pick", "Remember a path as the link source for a later 'drop'.");
+        cmd.Add(pathArg);
+        cmd.SetAction((parseResult, _) => Task.FromResult(Pick(parseResult.GetValue(pathArg)!)));
+        return cmd;
+    }
+
+    private static Command BuildDropCommand()
+    {
+        var targetArg = new Argument<string>("target") { Description = "Target directory where the hardlink (or cloned tree) is created." };
+        var cmd = new Command("drop", "Create a hardlink (file) or cloned hardlink tree (directory) at <target> using the previously picked source.");
+        cmd.Add(targetArg);
+        cmd.SetAction((parseResult, ct) => DropAsync(parseResult.GetValue(targetArg)!, ct));
+        return cmd;
+    }
+
+    private static int Pick(string path)
+    {
+        var full = Path.GetFullPath(path);
+        var isDir = Directory.Exists(full);
+        var isFile = File.Exists(full);
+
+        if (!isDir && !isFile)
+        {
+            Console.Error.WriteLine($"Path not found: {full}");
+            return 1;
+        }
+
+        var picked = new PickedSource
+        {
+            Path = full,
+            PickedAtUtc = DateTime.UtcNow,
+            IsDirectory = isDir,
+        };
+        PickedSourceStore.Save(picked);
+        Console.WriteLine($"Picked {(isDir ? "folder" : "file")}: {full}");
+        return 0;
+    }
+
+    private static async Task<int> DropAsync(string target, CancellationToken ct)
+    {
+        var picked = PickedSourceStore.TryLoad();
+        if (picked is null)
+        {
+            Console.Error.WriteLine("Nothing picked. Right-click a file or folder first and choose 'PowerLink: Pick as link source'.");
+            return 2;
+        }
+
+        var targetFull = Path.GetFullPath(target);
+        if (!Directory.Exists(targetFull))
+        {
+            Console.Error.WriteLine($"Target directory not found: {targetFull}");
+            return 1;
+        }
+
+        if (!File.Exists(picked.Path) && !Directory.Exists(picked.Path))
+        {
+            Console.Error.WriteLine($"Picked source no longer exists: {picked.Path}");
+            return 3;
+        }
+
+        try
+        {
+            if (picked.IsDirectory)
+            {
+                Console.WriteLine($"Cloning {picked.Path} -> {targetFull} as hardlinks...");
+                var engine = new CloneEngine();
+                var result = await engine.CloneAsync(picked.Path, targetFull, dryRun: false, ct);
+                Console.WriteLine($"Linked into: {result.EffectiveDestPath}");
+                Console.WriteLine($"Directories: {result.DirectoriesCreated:N0}, Files linked: {result.FilesLinked:N0}, Failed: {result.FilesFailed:N0}.");
+                return result.FilesFailed == 0 ? 0 : 1;
+            }
+            else
+            {
+                var linkPath = Path.Combine(targetFull, Path.GetFileName(picked.Path));
+                Win32Hardlink.CreateHardLink(linkPath, picked.Path);
+                Console.WriteLine($"Hardlinked: {linkPath} -> {picked.Path}");
+                return 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Drop failed: {ex.Message}");
+            return 1;
+        }
     }
 
     private static async Task<int> ScanAsync(string[] paths, long minSize, CancellationToken ct)
