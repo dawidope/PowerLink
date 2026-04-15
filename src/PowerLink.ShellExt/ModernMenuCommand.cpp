@@ -178,9 +178,10 @@ namespace
             return false;
         }
 
-        // Quick liveness check — if the child already exited by now, it crashed
-        // or self-aborted during startup (WinUI activation, package-identity
-        // confusion, missing runtime). Exit code tells us which.
+        // Diagnostic-only liveness probe. MUST stay under _DEBUG — a 500ms wait
+        // on the shell's UI thread (where Invoke runs) would freeze the context
+        // menu after every PowerLink click on end-user machines.
+#ifdef _DEBUG
         WaitForSingleObject(pi.hProcess, 500);
         DWORD exitCode = STILL_ACTIVE;
         GetExitCodeProcess(pi.hProcess, &exitCode);
@@ -191,6 +192,7 @@ namespace
             StringCchPrintfW(b, ARRAYSIZE(b), L"  spawn OK pid=%lu, exited code=0x%08lX",
                              pi.dwProcessId, exitCode);
         DebugLog(b);
+#endif
 
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
