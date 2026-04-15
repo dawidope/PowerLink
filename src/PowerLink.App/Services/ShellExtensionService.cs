@@ -7,6 +7,8 @@ public enum ShellVerbTarget { Cli, App }
 
 public enum ShellVerbKind { ContextMenu, OverlayHandler, DropHandler, ModernMenu }
 
+public enum ContextMenuLayout { Flat, Grouped }
+
 public sealed record ShellVerbKey(string RelativeKeyPath, string CommandArgs);
 
 public sealed record ShellVerb
@@ -38,6 +40,20 @@ public static class ShellExtensionService
     private const string DropClsid = "{4BA9E8F3-7D1A-4E6C-9E3B-8F2D7C4A1B59}";
     private const string DropRegName = "PowerLinkDrop";
     private const string DropDescription = "PowerLink Drop Handler";
+
+    // Preferences key for things like the chosen context-menu layout.
+    private const string PrefsKey = @"Software\PowerLink";
+
+    // Grouped layout: each Explorer target type gets its own submenu store under
+    // HKCU\Software\Classes (mirror of HKCR) so ExtendedSubCommandsKey can point
+    // at it. Keeping separate stores per target lets us show only the verbs that
+    // actually apply to that context without any dynamic filtering.
+    private static readonly (string Target, string Store)[] GroupedStores =
+    {
+        (@"*",                    "PowerLinkSubmenu.File"),
+        (@"Folder",               "PowerLinkSubmenu.Folder"),
+        (@"Directory\Background", "PowerLinkSubmenu.Background"),
+    };
 
     public static IReadOnlyList<ShellVerb> AllVerbs { get; } = new[]
     {
@@ -173,15 +189,58 @@ public static class ShellExtensionService
         if (verb.Kind == ShellVerbKind.ModernMenu)
             return ModernMenuService.IsInstalled();
 
+        var layout = GetLayout();
         foreach (var key in verb.Keys)
         {
-            using var k = OpenSubKey($@"{ClassesRoot}\{key.RelativeKeyPath}");
+            var path = layout == ContextMenuLayout.Grouped
+                ? GroupedLookupPath(key.RelativeKeyPath)
+                : $@"{ClassesRoot}\{key.RelativeKeyPath}";
+            if (path is null) continue;
+            using var k = OpenSubKey(path);
             if (k is null) return false;
         }
         return true;
     }
 
     public static bool IsAnyInstalled() => AllVerbs.Any(IsInstalled);
+
+    public static ContextMenuLayout GetLayout()
+    {
+        using var k = Registry.CurrentUser.OpenSubKey(PrefsKey);
+        var s = k?.GetValue("ContextMenuLayout") as string;
+        return string.Equals(s, nameof(ContextMenuLayout.Grouped), StringComparison.OrdinalIgnoreCase)
+            ? ContextMenuLayout.Grouped
+            : ContextMenuLayout.Flat;
+    }
+
+    public static void SetLayout(ContextMenuLayout layout)
+    {
+        using var k = Registry.CurrentUser.CreateSubKey(PrefsKey, writable: true)
+            ?? throw new InvalidOperationException("Failed to create PowerLink prefs key.");
+        k.SetValue("ContextMenuLayout", layout.ToString(), RegistryValueKind.String);
+    }
+
+    private static string? ExtractTarget(string relKey)
+    {
+        var idx = relKey.IndexOf(@"\shell\", StringComparison.OrdinalIgnoreCase);
+        return idx < 0 ? null : relKey[..idx];
+    }
+
+    private static string ExtractVerbId(string relKey)
+    {
+        var idx = relKey.LastIndexOf('\\');
+        return idx < 0 ? relKey : relKey[(idx + 1)..];
+    }
+
+    private static string? GroupedLookupPath(string relKey)
+    {
+        var target = ExtractTarget(relKey);
+        if (target is null) return null;
+        var store = GroupedStores.FirstOrDefault(
+            g => g.Target.Equals(target, StringComparison.OrdinalIgnoreCase)).Store;
+        if (string.IsNullOrEmpty(store)) return null;
+        return $@"{ClassesRoot}\{store}\shell\{ExtractVerbId(relKey)}";
+    }
 
     public static bool IsOverlayInstalled()
     {
@@ -257,10 +316,107 @@ public static class ShellExtensionService
             DeleteSubKeyTree($@"{ClassesRoot}\{key.RelativeKeyPath}");
     }
 
+    /// <summary>
+    /// Wipes every PowerLink context-menu registration under HKCU — both flat
+    /// and grouped layouts, parent entries and submenu stores alike. Called at
+    /// the start of an Apply to guarantee the resulting state matches exactly
+    /// what the UI asked for, without orphaned entries from a previous layout.
+    /// </summary>
     public static void UninstallAll()
     {
         foreach (var verb in AllVerbs)
             Uninstall(verb);
+
+        foreach (var (target, store) in GroupedStores)
+        {
+            DeleteSubKeyTree($@"{ClassesRoot}\{target}\shell\PowerLink");
+            DeleteSubKeyTree($@"{ClassesRoot}\{store}");
+        }
+    }
+
+    /// <summary>
+    /// Single entry point for Apply: tears down any previous PowerLink HKCU
+    /// state, persists the layout preference, then writes the verbs the user
+    /// selected under the shape that layout dictates.
+    /// </summary>
+    public static void ApplyContextMenuSelection(
+        IEnumerable<(ShellVerb verb, bool install)> selection,
+        string cliPath, string appPath, string iconPath,
+        ContextMenuLayout layout)
+    {
+        UninstallAll();
+        SetLayout(layout);
+
+        var toInstall = selection.Where(s => s.install).Select(s => s.verb).ToList();
+        if (toInstall.Count == 0) return;
+
+        if (layout == ContextMenuLayout.Flat)
+        {
+            foreach (var verb in toInstall)
+                Install(verb, cliPath, appPath, iconPath);
+            return;
+        }
+
+        var targetsWithVerbs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var verb in toInstall)
+        {
+            InstallGrouped(verb, cliPath, appPath, iconPath);
+            foreach (var key in verb.Keys)
+            {
+                var target = ExtractTarget(key.RelativeKeyPath);
+                if (target is not null) targetsWithVerbs.Add(target);
+            }
+        }
+        WriteGroupedParents(iconPath, targetsWithVerbs);
+    }
+
+    private static void InstallGrouped(ShellVerb verb, string cliPath, string appPath, string iconPath)
+    {
+        var exe = verb.Executable == ShellVerbTarget.Cli ? cliPath : appPath;
+        var icon = string.IsNullOrWhiteSpace(iconPath) ? null : $"\"{iconPath}\",0";
+
+        // Inside a cascading submenu the "PowerLink:" prefix is redundant — the
+        // parent already says PowerLink. Strip it for cleaner submenu labels.
+        var label = verb.Label.StartsWith("PowerLink: ", StringComparison.Ordinal)
+            ? verb.Label["PowerLink: ".Length..]
+            : verb.Label;
+
+        foreach (var key in verb.Keys)
+        {
+            var target = ExtractTarget(key.RelativeKeyPath);
+            if (target is null) continue;
+            var store = GroupedStores.FirstOrDefault(
+                g => g.Target.Equals(target, StringComparison.OrdinalIgnoreCase)).Store;
+            if (string.IsNullOrEmpty(store)) continue;
+
+            var subKey = $@"{ClassesRoot}\{store}\shell\{ExtractVerbId(key.RelativeKeyPath)}";
+            var command = $"\"{exe}\" {key.CommandArgs}";
+            WriteVerb(subKey, label, icon, command);
+        }
+    }
+
+    private static void WriteGroupedParents(string iconPath, HashSet<string> targetsWithVerbs)
+    {
+        var icon = string.IsNullOrWhiteSpace(iconPath) ? null : $"\"{iconPath}\",0";
+        foreach (var (target, store) in GroupedStores)
+        {
+            var parentPath = $@"{ClassesRoot}\{target}\shell\PowerLink";
+            if (!targetsWithVerbs.Contains(target))
+            {
+                DeleteSubKeyTree(parentPath);
+                continue;
+            }
+
+            using var k = Registry.CurrentUser.CreateSubKey(parentPath, writable: true)
+                ?? throw new InvalidOperationException($"Failed to create parent verb key: {parentPath}");
+            k.SetValue("MUIVerb", "PowerLink", RegistryValueKind.String);
+            if (icon is not null) k.SetValue("Icon", icon, RegistryValueKind.String);
+            // SubCommands="" + ExtendedSubCommandsKey together tell the shell to
+            // cascade this verb into the store rather than treat it as a single
+            // invocable verb.
+            k.SetValue("SubCommands", string.Empty, RegistryValueKind.String);
+            k.SetValue("ExtendedSubCommandsKey", store, RegistryValueKind.String);
+        }
     }
 
     public static string DetectCliPath()

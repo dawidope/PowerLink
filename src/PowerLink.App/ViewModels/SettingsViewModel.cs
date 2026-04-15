@@ -25,6 +25,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string? _overlayStatus;
     [ObservableProperty] private string? _dropStatus;
     [ObservableProperty] private string? _modernStatus;
+    [ObservableProperty] private bool _groupedLayout;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PickedVisibility))]
@@ -52,6 +53,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         CliPath = ShellExtensionService.DetectCliPath();
         AppPath = ShellExtensionService.DetectAppPath();
+        GroupedLayout = ShellExtensionService.GetLayout() == ContextMenuLayout.Grouped;
 
         SyncVerbStates(Verbs);
         SyncVerbStates(OverlayVerbs);
@@ -95,29 +97,26 @@ public partial class SettingsViewModel : ObservableObject
             var app = ShellExtensionService.DetectAppPath();
             var icon = ShellExtensionService.DetectIconPath();
 
-            var installed = 0;
-            var uninstalled = 0;
-            foreach (var v in Verbs)
-            {
-                if (v.ShouldInstall && !v.IsInstalled)
-                {
-                    ShellExtensionService.Install(v.Verb, cli, app, icon);
-                    installed++;
-                }
-                else if (!v.ShouldInstall && v.IsInstalled)
-                {
-                    ShellExtensionService.Uninstall(v.Verb);
-                    uninstalled++;
-                }
-            }
+            var oldLayout = ShellExtensionService.GetLayout();
+            var newLayout = GroupedLayout ? ContextMenuLayout.Grouped : ContextMenuLayout.Flat;
+
+            // Capture diff before Apply rewrites state so the status message
+            // reflects the user's actual delta, not the post-write reality.
+            var installing = Verbs.Count(v => v.ShouldInstall && !v.IsInstalled);
+            var uninstalling = Verbs.Count(v => !v.ShouldInstall && v.IsInstalled);
+
+            var selection = Verbs.Select(v => (v.Verb, v.ShouldInstall)).ToList();
+            ShellExtensionService.ApplyContextMenuSelection(selection, cli, app, icon, newLayout);
 
             Refresh();
-            OperationStatus = (installed, uninstalled) switch
+            var layoutChanged = oldLayout != newLayout;
+            OperationStatus = (installing, uninstalling, layoutChanged) switch
             {
-                (0, 0) => "No changes.",
-                (_, 0) => $"Installed {installed} verb(s). Restart Explorer to see them.",
-                (0, _) => $"Uninstalled {uninstalled} verb(s). Restart Explorer to apply.",
-                _ => $"Installed {installed}, uninstalled {uninstalled}. Restart Explorer to apply.",
+                (0, 0, false) => "No changes.",
+                (0, 0, true)  => $"Layout switched to {newLayout}. Restart Explorer to apply.",
+                (_, 0, _)     => $"Installed {installing} verb(s). Restart Explorer to see them.",
+                (0, _, _)     => $"Uninstalled {uninstalling} verb(s). Restart Explorer to apply.",
+                _             => $"Installed {installing}, uninstalled {uninstalling}. Restart Explorer to apply.",
             };
         }
         catch (Exception ex)

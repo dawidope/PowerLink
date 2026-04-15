@@ -29,6 +29,11 @@
                     <TextBlock TextWrapping="Wrap" Opacity="0.75"
                                Text="Choose which PowerLink entries to add to the right-click menu. Every verb here works with NTFS hardlinks (one file, multiple names — not copies, not symlinks). Per-user registry, no admin. On Windows 11 these appear under 'Show more options'."/>
 
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.GroupedLayout, Mode=TwoWay}"
+                                  Header="Group under a single 'PowerLink' submenu"
+                                  OffContent="Flat — each verb is its own top-level entry"
+                                  OnContent="Grouped — one 'PowerLink' item that cascades into the selected verbs"/>
+
                     <ItemsControl ItemsSource="{x:Bind ViewModel.Verbs, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:ShellVerbViewModel">
