@@ -67,13 +67,15 @@
 
   <PropertyGroup>
     <_ShellExtProject>..\PowerLink.ShellExt\PowerLink.ShellExt.vcxproj</_ShellExtProject>
-    <_ShellExtDll>..\PowerLink.ShellExt\x64\$(Configuration)\PowerLink.ShellExt.dll</_ShellExtDll>
+    <_ShellExtDll>..\PowerLink.ShellExt\$(Platform)\$(Configuration)\PowerLink.ShellExt.dll</_ShellExtDll>
   </PropertyGroup>
 
   <Target Name="BuildShellExt" BeforeTargets="BeforeBuild">
     <!-- dotnet CLI's MSBuild can't load .vcxproj (no C++ targets), so we
          explicitly find VS's MSBuild via vswhere and shell out to it.
-         VS solution build picks up the same target without harm. -->
+         VS solution build picks up the same target without harm. The vcxproj
+         ships x64 + ARM64 configurations — matching App's Platform makes
+         side-by-side deployment bitness-correct (the ARM64 path is untested). -->
     <PropertyGroup>
       <_VsWhere>$(MSBuildProgramFiles32)\Microsoft Visual Studio\Installer\vswhere.exe</_VsWhere>
     </PropertyGroup>
@@ -81,7 +83,7 @@
           ConsoleToMSBuild="true" StandardOutputImportance="low">
       <Output TaskParameter="ConsoleOutput" PropertyName="_VsMsBuildExe"/>
     </Exec>
-    <Exec Command="&quot;$(_VsMsBuildExe)&quot; &quot;$(_ShellExtProject)&quot; -p:Configuration=$(Configuration) -p:Platform=x64 -nologo -v:minimal"
+    <Exec Command="&quot;$(_VsMsBuildExe)&quot; &quot;$(_ShellExtProject)&quot; -p:Configuration=$(Configuration) -p:Platform=$(Platform) -nologo -v:minimal"
           ConsoleToMSBuild="true" />
   </Target>
 
