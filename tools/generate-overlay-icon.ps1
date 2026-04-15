@@ -3,16 +3,34 @@
 # transparent canvas — Windows draws the icon as-is on top of file icons,
 # so a fully-painted source like the app icon ends up looking centered.
 #
+# Per Microsoft's Win32 icon design guide:
+#   "Overlays go in bottom-left corner of icon, and should fill 25 percent
+#    of icon area."  (i.e. 50% × 50% bounding box)
+#   Concrete: 16→10, 32→16, 48→24, 256→128. Same proportion (~50%) at
+#   every size except 16x16 which gets a slightly bigger badge to stay
+#   readable. Multi-res ICO covers all sizes Explorer uses (Vista+ never
+#   scales overlays UP — missing sizes look wrong on hi-DPI thumbnails).
+#
 # Output: src/PowerLink.ShellExt/assets/hardlink-overlay.ico
-# Multi-resolution (16, 24, 32, 48, 64) with the source scaled to ~60%
-# and anchored to the bottom-left.
 
 param(
     [string]$Source = (Join-Path $PSScriptRoot '..\src\PowerLink.App\Assets\Icon.ico'),
-    [string]$Output = (Join-Path $PSScriptRoot '..\src\PowerLink.ShellExt\assets\hardlink-overlay.ico'),
-    [int[]]$Sizes = @(16, 24, 32, 48, 64),
-    [double]$Scale = 0.6
+    [string]$Output = (Join-Path $PSScriptRoot '..\src\PowerLink.ShellExt\assets\hardlink-overlay.ico')
 )
+
+# Map: canvas size -> overlay graphic size in pixels.
+# Matches Microsoft Win32 icon-design spec exactly.
+$badgeSizes = [ordered]@{
+    16  = 10
+    24  = 12
+    32  = 16
+    48  = 24
+    64  = 32
+    96  = 48
+    128 = 64
+    256 = 128
+}
+$Sizes = @($badgeSizes.Keys)
 
 Add-Type -AssemblyName System.Drawing
 
@@ -31,7 +49,7 @@ foreach ($size in $Sizes) {
     $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
     $g.PixelOffsetMode   = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 
-    $badge = [int][Math]::Round($size * $Scale)
+    $badge = [int]$badgeSizes[$size]
     $rect  = [System.Drawing.Rectangle]::new(0, $size - $badge, $badge, $badge)
     $g.DrawImage($srcBmp, $rect)
     $g.Dispose()
