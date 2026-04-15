@@ -112,6 +112,13 @@
                     <TextBlock TextWrapping="Wrap" Opacity="0.75"
                                Text="Adds a 'PowerLink' submenu to the TOP section of the Win11 right-click menu (no 'Show more options' needed). Registers a sparse MSIX package pointing at this app's folder — no signing. Requires Windows Developer Mode (Settings → Privacy &amp; security → For developers)."/>
 
+                    <InfoBar IsOpen="True"
+                             Severity="Warning"
+                             IsClosable="False"
+                             Title="Requirements not met"
+                             Message="{x:Bind ViewModel.ModernRequirementsWarning, Mode=OneWay}"
+                             Visibility="{x:Bind ViewModel.ModernRequirementsVisibility, Mode=OneWay}"/>
+
                     <ItemsControl ItemsSource="{x:Bind ViewModel.ModernVerbs, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:ShellVerbViewModel">

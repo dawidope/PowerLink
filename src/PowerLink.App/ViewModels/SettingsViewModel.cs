@@ -27,6 +27,17 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string? _modernStatus;
     [ObservableProperty] private bool _groupedLayout;
 
+    // Populated in Refresh() with a non-empty message when the current machine
+    // can't register the modern menu package (Windows 10 doesn't expose the
+    // top-section API at all, and unsigned packages require Developer Mode).
+    // Bound to the InfoBar in the Modern menu Settings section.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ModernRequirementsVisibility))]
+    private string? _modernRequirementsWarning;
+
+    public Visibility ModernRequirementsVisibility =>
+        string.IsNullOrEmpty(ModernRequirementsWarning) ? Visibility.Collapsed : Visibility.Visible;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PickedVisibility))]
     [NotifyPropertyChangedFor(nameof(NoPickVisibility))]
@@ -54,6 +65,7 @@ public partial class SettingsViewModel : ObservableObject
         CliPath = ShellExtensionService.DetectCliPath();
         AppPath = ShellExtensionService.DetectAppPath();
         GroupedLayout = ShellExtensionService.GetLayout() == ContextMenuLayout.Grouped;
+        ModernRequirementsWarning = ComputeModernRequirementsWarning();
 
         SyncVerbStates(Verbs);
         SyncVerbStates(OverlayVerbs);
@@ -327,4 +339,16 @@ public partial class SettingsViewModel : ObservableObject
     private void RefreshPicked() => Refresh();
 
     private bool CanClearPick() => HasPicked;
+
+    private static string? ComputeModernRequirementsWarning()
+    {
+        // Win11 is 10.0.22000+. Earlier builds don't have the top-section
+        // fileExplorerContextMenus extension point at all — no amount of
+        // Developer Mode will make it light up, so surface that distinctly.
+        if (Environment.OSVersion.Version.Build < 22000)
+            return "Windows 11 (build 22000 or newer) is required — the top-section context-menu API doesn't exist on Windows 10.";
+        if (!ModernMenuService.IsDeveloperModeEnabled())
+            return "Windows Developer Mode is off. Enable it in Settings → Privacy & security → For developers so the unsigned sparse package can register.";
+        return null;
+    }
 }
