@@ -179,7 +179,17 @@ public static class Program
             }
             else
             {
+                if (!Win32Hardlink.AreSameVolume(picked.Path, targetFull))
+                {
+                    Console.Error.WriteLine("Drop failed: source and target must be on the same NTFS volume. Hardlinks cannot cross volumes.");
+                    return 1;
+                }
                 var linkPath = Path.Combine(targetFull, Path.GetFileName(picked.Path));
+                if (File.Exists(linkPath))
+                {
+                    Console.Error.WriteLine($"Drop failed: a file named '{Path.GetFileName(picked.Path)}' already exists in the target.");
+                    return 1;
+                }
                 Win32Hardlink.CreateHardLink(linkPath, picked.Path);
                 Console.WriteLine($"Hardlinked: {linkPath} -> {picked.Path}");
                 return 0;
@@ -247,7 +257,8 @@ public static class Program
         var executor = new DedupExecutor();
         var execResult = await executor.ExecuteAsync(plan, ct, progress);
         Console.WriteLine();
-        Console.WriteLine($"Done. Success: {execResult.SuccessCount:N0}, Failures: {execResult.FailureCount:N0}, Recovered: {FormatBytes(execResult.BytesRecovered)}.");
+        var prefix = execResult.WasCancelled ? "Stopped. Partial — " : "Done. ";
+        Console.WriteLine($"{prefix}Success: {execResult.SuccessCount:N0}, Failures: {execResult.FailureCount:N0}, Recovered: {FormatBytes(execResult.BytesRecovered)}.");
         foreach (var failure in execResult.Failures.Take(20))
             Console.WriteLine($"  FAIL {failure.DuplicatePath}: {failure.Reason}");
 

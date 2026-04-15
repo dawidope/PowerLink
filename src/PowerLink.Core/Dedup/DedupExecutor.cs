@@ -24,53 +24,65 @@ public class DedupExecutor
         var failures = new List<DedupFailure>();
         var successCount = 0;
         long bytesRecovered = 0;
+        var wasCancelled = false;
 
-        for (var i = 0; i < plan.Actions.Count; i++)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var action = plan.Actions[i];
-
-            try
+            for (var i = 0; i < plan.Actions.Count; i++)
             {
-                VerifyCanonical(action);
+                cancellationToken.ThrowIfCancellationRequested();
+                var action = plan.Actions[i];
 
-                File.Delete(action.DuplicatePath);
                 try
                 {
-                    Win32Hardlink.CreateHardLink(action.DuplicatePath, action.CanonicalPath);
-                    successCount++;
-                    bytesRecovered += action.SizeBytes;
+                    VerifyCanonical(action);
+
+                    File.Delete(action.DuplicatePath);
+                    try
+                    {
+                        Win32Hardlink.CreateHardLink(action.DuplicatePath, action.CanonicalPath);
+                        successCount++;
+                        bytesRecovered += action.SizeBytes;
+                    }
+                    catch
+                    {
+                        _logger.LogError(
+                            "Hardlink creation failed after deleting duplicate: {Duplicate}. " +
+                            "Canonical is intact at {Canonical}.",
+                            action.DuplicatePath, action.CanonicalPath);
+                        throw;
+                    }
                 }
-                catch
+                catch (OperationCanceledException)
                 {
-                    _logger.LogError(
-                        "Hardlink creation failed after deleting duplicate: {Duplicate}. " +
-                        "Canonical is intact at {Canonical}.",
-                        action.DuplicatePath, action.CanonicalPath);
                     throw;
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Dedup action failed: {Duplicate} -> {Canonical}",
-                    action.DuplicatePath, action.CanonicalPath);
-                failures.Add(new DedupFailure
+                catch (Exception ex)
                 {
-                    DuplicatePath = action.DuplicatePath,
-                    CanonicalPath = action.CanonicalPath,
-                    Reason = ex.Message,
+                    _logger.LogWarning(ex, "Dedup action failed: {Duplicate} -> {Canonical}",
+                        action.DuplicatePath, action.CanonicalPath);
+                    failures.Add(new DedupFailure
+                    {
+                        DuplicatePath = action.DuplicatePath,
+                        CanonicalPath = action.CanonicalPath,
+                        Reason = ex.Message,
+                    });
+                }
+
+                progress?.Report(new ScanProgress
+                {
+                    Phase = ScanPhase.Executing,
+                    FilesProcessed = i + 1,
+                    TotalFiles = plan.Actions.Count,
+                    BytesProcessed = bytesRecovered,
+                    TotalBytes = plan.TotalBytesToRecover,
+                    CurrentFile = action.DuplicatePath,
                 });
             }
-
-            progress?.Report(new ScanProgress
-            {
-                Phase = ScanPhase.Executing,
-                FilesProcessed = i + 1,
-                TotalFiles = plan.Actions.Count,
-                BytesProcessed = bytesRecovered,
-                TotalBytes = plan.TotalBytesToRecover,
-                CurrentFile = action.DuplicatePath,
-            });
+        }
+        catch (OperationCanceledException)
+        {
+            wasCancelled = true;
         }
 
         await Task.CompletedTask;
@@ -81,6 +93,7 @@ public class DedupExecutor
             FailureCount = failures.Count,
             BytesRecovered = bytesRecovered,
             Failures = failures,
+            WasCancelled = wasCancelled,
         };
     }
 

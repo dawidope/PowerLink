@@ -154,12 +154,18 @@ public partial class DedupViewModel : ObservableObject
         try
         {
             var result = await _executor.ExecuteAsync(Plan, _cts.Token, progress);
+            var prefix = result.WasCancelled ? "Stopped. Partial: " : string.Empty;
             SummaryText =
-                $"Done. Success: {result.SuccessCount:N0}, Failures: {result.FailureCount:N0}, " +
+                $"{prefix}Success: {result.SuccessCount:N0}, Failures: {result.FailureCount:N0}, " +
                 $"Recovered: {FormatBytes(result.BytesRecovered)}.";
-            StatusText = result.FailureCount == 0 ? "Deduplication complete." : "Completed with failures.";
-            Plan = null;
-            Groups.Clear();
+            StatusText = result.WasCancelled
+                ? "Stopped before all actions completed."
+                : (result.FailureCount == 0 ? "Deduplication complete." : "Completed with failures.");
+            if (!result.WasCancelled)
+            {
+                Plan = null;
+                Groups.Clear();
+            }
         }
         catch (OperationCanceledException)
         {
@@ -185,6 +191,10 @@ public partial class DedupViewModel : ObservableObject
 
     private void OnProgress(ScanProgress p)
     {
+        // Progress<T>.Report posts via SynchronizationContext — a late
+        // callback can land after the finally block cleared UI state.
+        if (!IsScanning && !IsExecuting) return;
+
         if (_currentPhase != p.Phase)
         {
             _currentPhase = p.Phase;

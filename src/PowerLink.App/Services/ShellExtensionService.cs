@@ -15,8 +15,12 @@ public static class ShellExtensionService
 
     public static bool IsInstalled()
     {
-        using var pick = OpenSubKey($@"{ClassesRoot}\*\shell\{PickKeyName}");
-        return pick is not null;
+        using var pickAny    = OpenSubKey($@"{ClassesRoot}\*\shell\{PickKeyName}");
+        using var pickFolder = OpenSubKey($@"{ClassesRoot}\Folder\shell\{PickKeyName}");
+        using var dropFolder = OpenSubKey($@"{ClassesRoot}\Folder\shell\{DropKeyName}");
+        using var dropBg     = OpenSubKey($@"{ClassesRoot}\Directory\Background\shell\{DropKeyName}");
+        return pickAny is not null && pickFolder is not null
+            && dropFolder is not null && dropBg is not null;
     }
 
     public static void Install(string cliExePath, string iconSourcePath)

@@ -45,24 +45,21 @@ public sealed partial class MainWindow : Window
 
     private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        if (args.SelectedItem is NavigationViewItem item && item.Tag is string tag)
+        if (args.SelectedItem is not NavigationViewItem item || item.Tag is not string tag) return;
+
+        Type? target = tag switch
         {
-            switch (tag)
-            {
-                case "dedup":
-                    ContentFrame.Navigate(typeof(DedupPage));
-                    break;
-                case "clone":
-                    ContentFrame.Navigate(typeof(ClonePage));
-                    break;
-                case "inspector":
-                    ContentFrame.Navigate(typeof(InspectorPage));
-                    break;
-                case "settings":
-                    ContentFrame.Navigate(typeof(SettingsPage));
-                    break;
-            }
-        }
+            "dedup" => typeof(DedupPage),
+            "clone" => typeof(ClonePage),
+            "inspector" => typeof(InspectorPage),
+            "settings" => typeof(SettingsPage),
+            _ => null,
+        };
+
+        // Skip re-navigation to the current page — Navigate() creates a new
+        // Page + ViewModel each time, orphaning any scan already in flight.
+        if (target is null || ContentFrame.SourcePageType == target) return;
+        ContentFrame.Navigate(target);
     }
 
     private void ThemeToggleItem_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)

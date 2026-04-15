@@ -195,6 +195,10 @@ public partial class CloneViewModel : ObservableObject
 
     private void OnProgress(ScanProgress p)
     {
+        // Progress<T>.Report posts via SynchronizationContext — a late
+        // callback can land after the finally block cleared UI state.
+        if (!IsRunning) return;
+
         var isFinal = p.TotalFiles > 0 && p.FilesProcessed >= p.TotalFiles;
         var now = DateTime.UtcNow;
         if (!isFinal && (now - _lastUiFlush).TotalMilliseconds < UiUpdateIntervalMs)

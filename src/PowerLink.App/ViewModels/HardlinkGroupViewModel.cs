@@ -10,7 +10,9 @@ public record HardlinkGroupViewModel
 
     public int LinksInScan => PathsInScan.Count;
     public int LinksOutsideScan => Math.Max(0, (int)TotalHardLinkCount - LinksInScan);
-    public long SavedBytes => FileSize * (TotalHardLinkCount - 1);
+    public long SavedBytes => TotalHardLinkCount > 1
+        ? FileSize * (long)(TotalHardLinkCount - 1)
+        : 0;
 
     public string Header =>
         LinksOutsideScan == 0

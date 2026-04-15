@@ -13,6 +13,7 @@ public record DedupExecutionResult
     public required int FailureCount { get; init; }
     public required long BytesRecovered { get; init; }
     public required IReadOnlyList<DedupFailure> Failures { get; init; }
+    public bool WasCancelled { get; init; }
 }
 
 public record DedupFailure
