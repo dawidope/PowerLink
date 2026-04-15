@@ -263,6 +263,20 @@ public static class ShellExtensionService
         return root?.GetSubKeyNames().Length ?? 0;
     }
 
+    /// <summary>
+    /// Returns the raw key names under HKLM's ShellIconOverlayIdentifiers —
+    /// leading-space tricks (OneDrive, ours) are preserved so the user sees
+    /// exactly what's competing for the 15 slots Windows loads.
+    /// </summary>
+    public static IReadOnlyList<string> ListOverlayHandlers()
+    {
+        using var root = Registry.LocalMachine.OpenSubKey(OverlayRoot);
+        if (root is null) return Array.Empty<string>();
+        return root.GetSubKeyNames()
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+    }
+
     public static bool IsDropHandlerInstalled()
     {
         using var cls = Registry.CurrentUser.OpenSubKey(

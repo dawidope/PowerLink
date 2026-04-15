@@ -47,6 +47,11 @@ public partial class SettingsViewModel : ObservableObject
     public Visibility PickedVisibility => HasPicked ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NoPickVisibility => HasPicked ? Visibility.Collapsed : Visibility.Visible;
 
+    // Injected by SettingsPage — returns true if the user confirmed installing
+    // the overlay despite the system being at/over Windows' 15-handler limit.
+    // Kept as a simple Func to avoid dragging a view reference into the VM.
+    public Func<IReadOnlyList<string>, Task<bool>>? ConfirmOverlaySlotWar { get; set; }
+
     public SettingsViewModel()
     {
         foreach (var verb in ShellExtensionService.AllVerbs)
@@ -172,9 +177,19 @@ public partial class SettingsViewModel : ObservableObject
 
         if (install)
         {
-            var existing = ShellExtensionService.CountOverlayHandlersOnSystem();
-            if (existing >= 14)
-                OverlayStatus = $"Note: {existing} overlay handlers already registered. Windows loads only the first 15 alphabetically — PowerLink uses a leading-space name to win the sort.";
+            var handlers = ShellExtensionService.ListOverlayHandlers();
+            // 14 rather than 15: adding ours would push the total to 15+, right
+            // at the limit where Windows starts ignoring handlers. Ask first so
+            // the user sees whose slot they might steal.
+            if (handlers.Count >= 14 && ConfirmOverlaySlotWar is not null)
+            {
+                var proceed = await ConfirmOverlaySlotWar(handlers);
+                if (!proceed)
+                {
+                    OverlayStatus = "Cancelled — overlay install not attempted.";
+                    return;
+                }
+            }
         }
 
         var args = install
