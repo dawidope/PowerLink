@@ -75,6 +75,10 @@
     <ClInclude Include="HardlinkOverlayHandler.h" />
     <ClInclude Include="HardlinkDetection.h" />
     <ClInclude Include="HardlinkCache.h" />
+    <ClInclude Include="resource.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Resource.rc" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">

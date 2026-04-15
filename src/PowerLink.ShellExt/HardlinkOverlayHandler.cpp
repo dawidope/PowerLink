@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "HardlinkOverlayHandler.h"
 #include "HardlinkDetection.h"
+#include "resource.h"
 
 HardlinkOverlayHandler::HardlinkOverlayHandler() : _refCount(1)
 {
@@ -55,20 +56,12 @@ IFACEMETHODIMP HardlinkOverlayHandler::GetOverlayInfo(PWSTR pwszIconFile, int cc
     if (pwszIconFile == nullptr || pIndex == nullptr || pdwFlags == nullptr)
         return E_POINTER;
 
-    // TODO: replace with embedded chain-link ICO resource in this DLL
-    // (requires Resource.rc + assets/hardlink-overlay.ico).
-    // For now: use a Windows built-in link overlay from imageres.dll — ugly,
-    // but visible and proves the plumbing works.
-    wchar_t system32[MAX_PATH] = {};
-    if (GetSystemDirectoryW(system32, MAX_PATH) == 0)
+    // Icon is embedded in this DLL (Resource.rc -> ../PowerLink.App/Assets/Icon.ico).
+    // Negative index = -ResourceID; ExtractIcon convention.
+    if (GetModuleFileNameW(g_hModule, pwszIconFile, static_cast<DWORD>(cchMax)) == 0)
         return HRESULT_FROM_WIN32(GetLastError());
 
-    if (FAILED(StringCchCopyW(pwszIconFile, cchMax, system32)))
-        return STRSAFE_E_INSUFFICIENT_BUFFER;
-    if (FAILED(StringCchCatW(pwszIconFile, cchMax, L"\\imageres.dll")))
-        return STRSAFE_E_INSUFFICIENT_BUFFER;
-
-    *pIndex   = 154; // small link-arrow overlay
+    *pIndex   = -IDI_HARDLINK_OVERLAY;
     *pdwFlags = ISIOI_ICONFILE | ISIOI_ICONINDEX;
     return S_OK;
 }
