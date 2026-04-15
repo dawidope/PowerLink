@@ -52,11 +52,13 @@ All of this is driven from a WinUI 3 app and a matching CLI. The shell extension
 |---|---|
 | ![Clone page](docs/media/clone-page.png) | ![Settings page](docs/media/settings-page.png) |
 
-| Classic context menu | Windows 11 modern menu | Hardlink overlay badge |
-|---|---|---|
-| ![Classic context menu](docs/media/context-menu-classic.png) | ![Modern Win11 menu](docs/media/context-menu-modern.png) | ![Overlay badge](docs/media/overlay-badge.png) |
+**Explorer context menu** — PowerLink submenu expanded on a file:
 
-<!-- TODO: capture all seven screenshots above. Light theme, realistic data (models folder with obvious duplicates works well for Dedup/Inspector). -->
+![Explorer context menu](docs/media/context-menu.png)
+
+**Overlay badge** — the rightmost file is a hardlink and gets a small chain-link icon in the lower-left corner of its thumbnail:
+
+![Overlay badge](docs/media/overlay-badge.png)
 
 ---
 
