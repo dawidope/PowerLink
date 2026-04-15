@@ -28,7 +28,7 @@ public static class ShellExtensionService
         {
             Id = "PowerLinkPick",
             Label = "PowerLink: Pick as link source",
-            Description = "Remember this file or folder as the source for a later 'Drop as hardlink here'.",
+            Description = "Remember this path as the source for a later 'Drop as hardlink here'. Both must be on the same NTFS volume.",
             TargetsText = "Files, folders",
             Executable = ShellVerbTarget.Cli,
             Keys = new[]
@@ -41,7 +41,7 @@ public static class ShellExtensionService
         {
             Id = "PowerLinkDrop",
             Label = "PowerLink: Drop as hardlink here",
-            Description = "Create a hardlink (for files) or a cloned tree (for folders) from the previously picked source.",
+            Description = "Make a hardlink (file) or a tree of hardlinks (folder) from the picked source. Shares data — not a copy, not a symlink.",
             TargetsText = "Folders, folder background",
             Executable = ShellVerbTarget.Cli,
             Keys = new[]
@@ -54,7 +54,7 @@ public static class ShellExtensionService
         {
             Id = "PowerLinkShowLinks",
             Label = "PowerLink: Show hardlinks",
-            Description = "List every path that shares this file's data on disk — quick dialog, no scan.",
+            Description = "Show every path on this volume that is a hardlink to this file's data. Quick dialog, no scan.",
             TargetsText = "Files",
             Executable = ShellVerbTarget.Cli,
             Keys = new[]
@@ -66,7 +66,7 @@ public static class ShellExtensionService
         {
             Id = "PowerLinkInspect",
             Label = "PowerLink: Inspect for hardlinks",
-            Description = "Open PowerLink's Inspector with this folder — finds files inside that are already hardlinked.",
+            Description = "Open PowerLink's Inspector with this folder — finds files inside that are already hardlinked and shows every sibling path.",
             TargetsText = "Folders, folder background",
             Executable = ShellVerbTarget.App,
             Keys = new[]
@@ -79,7 +79,7 @@ public static class ShellExtensionService
         {
             Id = "PowerLinkDedup",
             Label = "PowerLink: Deduplicate folder",
-            Description = "Open PowerLink's Deduplicate page with this folder added to the scan list.",
+            Description = "Open PowerLink's Deduplicate page with this folder added. Finds identical files and replaces duplicates with hardlinks to reclaim disk space.",
             TargetsText = "Folders, folder background",
             Executable = ShellVerbTarget.App,
             Keys = new[]
@@ -92,7 +92,7 @@ public static class ShellExtensionService
         {
             Id = "PowerLinkClone",
             Label = "PowerLink: Clone folder (hardlinks)",
-            Description = "Open PowerLink's Clone page with this folder pre-filled as the source.",
+            Description = "Open PowerLink's Clone page with this folder as source. Mirrors the tree as hardlinks — not a copy, no extra disk used, same volume only.",
             TargetsText = "Folders",
             Executable = ShellVerbTarget.App,
             Keys = new[]

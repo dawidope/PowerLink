@@ -25,14 +25,19 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0" Text="Hardlink inspector" Style="{ThemeResource TitleTextBlockStyle}"/>
         <TextBlock Grid.Row="1" TextWrapping="Wrap" Opacity="0.7"
-                   Text="Scans one or more folders and lists every file whose data is shared with other files via NTFS hardlinks. Groups show all paths inside the scan that point at the same physical file, and whether siblings exist outside."/>
+                   Text="Find hardlinked files — one file with multiple names on disk. Shows every path (in and outside the scanned folders) and how much space is saved by sharing."/>
 
-        <Grid Grid.Row="2" ColumnSpacing="8">
+        <InfoBar Grid.Row="2" IsOpen="True" IsClosable="False" Severity="Informational"
+                 Title="What's a hardlink?"
+                 Message="One file on disk with multiple names. Opens normally from every path. Delete one path — the data stays until the last name is gone. Works only within a single NTFS volume."/>
+
+        <Grid Grid.Row="3" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -54,7 +59,7 @@
             </StackPanel>
         </Grid>
 
-        <Border Grid.Row="3" CornerRadius="6" BorderThickness="1"
+        <Border Grid.Row="4" CornerRadius="6" BorderThickness="1"
                 BorderBrush="{ThemeResource ControlElevationBorderBrush}"
                 MaxHeight="160">
             <ListView ItemsSource="{x:Bind ViewModel.Paths, Mode=OneWay}"
@@ -79,7 +84,7 @@
             </ListView>
         </Border>
 
-        <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="12">
+        <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="12">
             <Button Command="{x:Bind ViewModel.ScanCommand}"
                     Style="{ThemeResource AccentButtonStyle}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
@@ -95,7 +100,7 @@
             </Button>
         </StackPanel>
 
-        <StackPanel Grid.Row="5" Spacing="6">
+        <StackPanel Grid.Row="6" Spacing="6">
             <ProgressBar Value="{x:Bind ViewModel.ProgressValue, Mode=OneWay}"
                          IsIndeterminate="{x:Bind ViewModel.IsProgressIndeterminate, Mode=OneWay}"
                          Maximum="100"/>
@@ -115,7 +120,7 @@
                        FontWeight="SemiBold" TextWrapping="Wrap"/>
         </StackPanel>
 
-        <ScrollViewer Grid.Row="6" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Grid.Row="7" VerticalScrollBarVisibility="Auto">
             <ItemsControl ItemsSource="{x:Bind ViewModel.Groups, Mode=OneWay}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:HardlinkGroupViewModel">

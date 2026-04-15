@@ -20,14 +20,19 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0" Text="Clone" Style="{ThemeResource TitleTextBlockStyle}"/>
         <TextBlock Grid.Row="1" TextWrapping="Wrap" Opacity="0.7"
-                   Text="Hardlink a single file or mirror a whole directory tree to a new location. The destination must be on the same NTFS volume as the source."/>
+                   Text="Mirror a folder (or link a single file) to a new location using hardlinks — the new tree shares data with the original, no extra disk used. Not a copy, not a symlink. Same volume only."/>
 
-        <Grid Grid.Row="2" ColumnSpacing="8">
+        <InfoBar Grid.Row="2" IsOpen="True" IsClosable="False" Severity="Informational"
+                 Title="What's a hardlink?"
+                 Message="One file on disk with multiple names. Opens normally from every path. Delete one path — the data stays until the last name is gone. Works only within a single NTFS volume."/>
+
+        <Grid Grid.Row="3" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -54,7 +59,7 @@
             </Button>
         </Grid>
 
-        <Grid Grid.Row="3" ColumnSpacing="8">
+        <Grid Grid.Row="4" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -71,10 +76,10 @@
             </Button>
         </Grid>
 
-        <CheckBox Grid.Row="4" Content="Dry run (don't touch the filesystem)"
+        <CheckBox Grid.Row="5" Content="Dry run (don't touch the filesystem)"
                   IsChecked="{x:Bind ViewModel.DryRun, Mode=TwoWay}"/>
 
-        <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="12">
+        <StackPanel Grid.Row="6" Orientation="Horizontal" Spacing="12">
             <Button Command="{x:Bind ViewModel.RunCommand}"
                     Style="{ThemeResource AccentButtonStyle}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
@@ -90,7 +95,7 @@
             </Button>
         </StackPanel>
 
-        <StackPanel Grid.Row="6" Spacing="6">
+        <StackPanel Grid.Row="7" Spacing="6">
             <ProgressBar Value="{x:Bind ViewModel.ProgressValue, Mode=OneWay}"
                          IsIndeterminate="{x:Bind ViewModel.IsProgressIndeterminate, Mode=OneWay}"
                          Maximum="100"/>

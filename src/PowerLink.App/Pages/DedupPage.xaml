@@ -28,14 +28,19 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0" Text="Deduplicate" Style="{ThemeResource TitleTextBlockStyle}"/>
         <TextBlock Grid.Row="1" TextWrapping="Wrap" Opacity="0.7"
-                   Text="Pick directories to scan. Identical files (same content) will be replaced with NTFS hardlinks, recovering disk space without losing any path."/>
+                   Text="Find identical files and replace duplicates with NTFS hardlinks — every path keeps working, but the data exists only once on disk. Not a copy, not a symlink."/>
 
-        <Grid Grid.Row="2" ColumnSpacing="8">
+        <InfoBar Grid.Row="2" IsOpen="True" IsClosable="False" Severity="Informational"
+                 Title="What's a hardlink?"
+                 Message="One file on disk with multiple names. Opens normally from every path. Delete one path — the data stays until the last name is gone. Works only within a single NTFS volume."/>
+
+        <Grid Grid.Row="3" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -57,7 +62,7 @@
             </StackPanel>
         </Grid>
 
-        <Border Grid.Row="3" CornerRadius="6" BorderThickness="1"
+        <Border Grid.Row="4" CornerRadius="6" BorderThickness="1"
                 BorderBrush="{ThemeResource ControlElevationBorderBrush}"
                 MaxHeight="160">
             <ListView ItemsSource="{x:Bind ViewModel.Paths, Mode=OneWay}"
@@ -82,7 +87,7 @@
             </ListView>
         </Border>
 
-        <Grid Grid.Row="4" RowSpacing="8">
+        <Grid Grid.Row="5" RowSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
@@ -131,7 +136,7 @@
             </StackPanel>
         </Grid>
 
-        <StackPanel Grid.Row="5" Spacing="6">
+        <StackPanel Grid.Row="6" Spacing="6">
             <ProgressBar Value="{x:Bind ViewModel.ProgressValue, Mode=OneWay}"
                          IsIndeterminate="{x:Bind ViewModel.IsProgressIndeterminate, Mode=OneWay}"
                          Maximum="100"/>
@@ -163,7 +168,7 @@
             <TextBlock Text="{x:Bind ViewModel.SummaryText, Mode=OneWay}" FontWeight="SemiBold" TextWrapping="Wrap"/>
         </StackPanel>
 
-        <Grid Grid.Row="6" RowSpacing="8"
+        <Grid Grid.Row="7" RowSpacing="8"
               Visibility="{x:Bind ViewModel.GroupsVisibility, Mode=OneWay}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>

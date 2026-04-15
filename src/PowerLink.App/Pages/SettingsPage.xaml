@@ -24,7 +24,7 @@
                 <StackPanel Spacing="12">
                     <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Explorer context menu"/>
                     <TextBlock TextWrapping="Wrap" Opacity="0.75"
-                               Text="Choose which PowerLink entries to add to the right-click menu. Per-user registry, no admin required. On Windows 11 these appear under 'Show more options'."/>
+                               Text="Choose which PowerLink entries to add to the right-click menu. Every verb here works with NTFS hardlinks (one file, multiple names — not copies, not symlinks). Per-user registry, no admin. On Windows 11 these appear under 'Show more options'."/>
 
                     <ItemsControl ItemsSource="{x:Bind ViewModel.Verbs, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
