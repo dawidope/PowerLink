@@ -195,4 +195,4 @@ Dedup algorithm: enumerate → group by `(volume, size)` → 4 KiB prefix XxHash
 
 ## License
 
-TBD.
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Dawid Wenderski.
