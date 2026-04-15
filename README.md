@@ -2,7 +2,7 @@
 
 NTFS hardlink tool for Windows — deduplicate identical files in place, clone directories without copying data, and drive it all from Explorer.
 
-> **Status:** pre-release. Works on my machine, not signed, not shipped. See [Limitations](#limitations) before installing.
+> **Status:** pre-release. Portable zips on the [Releases](../../releases) page, not code-signed yet. See [Limitations](#limitations) before installing.
 
 ---
 
