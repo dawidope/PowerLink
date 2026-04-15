@@ -248,7 +248,13 @@ public static class ShellExtensionService
             $@"SOFTWARE\Classes\CLSID\{OverlayClsid}\InprocServer32");
         using var overlay = Registry.LocalMachine.OpenSubKey(
             $@"{OverlayRoot}\{OverlayRegName}");
-        return cls is not null && overlay is not null;
+        if (cls is null || overlay is null) return false;
+
+        // Guard against stale registrations: if the DLL the registry points at
+        // no longer exists (user cleaned bin/, moved the build, reinstalled
+        // somewhere else), surface that as "not installed" so Settings and
+        // Apply reflect reality instead of a phantom registration.
+        return cls.GetValue(string.Empty) is string dll && File.Exists(dll);
     }
 
     public static int CountOverlayHandlersOnSystem()
@@ -263,7 +269,11 @@ public static class ShellExtensionService
             $@"{ClassesRoot}\CLSID\{DropClsid}\InprocServer32");
         using var drop = Registry.CurrentUser.OpenSubKey(
             $@"{ClassesRoot}\Directory\shellex\DragDropHandlers\{DropRegName}");
-        return cls is not null && drop is not null;
+        if (cls is null || drop is null) return false;
+
+        // Same stale-registration guard as IsOverlayInstalled — if the DLL has
+        // disappeared since we registered it, don't claim the handler is live.
+        return cls.GetValue(string.Empty) is string dll && File.Exists(dll);
     }
 
     public static void InstallDropHandler(string dllPath)
