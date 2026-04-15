@@ -192,6 +192,18 @@ Dedup algorithm: enumerate → group by `(volume, size)` → 4 KiB prefix XxHash
 
 ---
 
+## Roadmap
+
+Nothing is committed to a date — this is the direction of travel, ordered roughly by how likely I am to tackle it next.
+
+**Symlinks and junctions.** Junctions are the directory-equivalent of hardlinks and don't need admin, so they slot naturally into the same UI. Symlinks need UAC or Developer Mode (`SeCreateSymbolicLinkPrivilege`), but they're the only way to link across volumes and to non-existent targets, so worth supporting with a clear "this will prompt for admin" warning. Also: Smart Move — update existing junctions/symlinks when their target is renamed or moved.
+
+**Advanced copy operations.** Smart Copy (mirror a tree while preserving its internal hardlink groups, not just pretending each file is unique), DeLorean Copy (incremental backups — new snapshot only uses disk for files that changed, everything else hardlinks back to the previous snapshot), Smart Mirror (two-way sync that keeps hardlinks intact), and a Backup Mode that round-trips ACLs, alternate data streams, and EFS-encrypted files.
+
+**PowerToys integration.** The end goal. Migrate `PowerLink.Core` into `src/modules/powerlink/`, build a PowerToys Settings page, wire it into Command Palette ("create hardlink", "clone folder", "deduplicate"), and ship as a runner-loaded module. The project is already structured for this — Core has no UI dependencies, the stack matches PowerToys (WinUI 3 + C++/COM + .NET 8).
+
+---
+
 ## Inspiration
 
 [Link Shell Extension](https://schinagl.priv.at/nt/hardlinkshellext/linkshellextension.html) by Hermann Schinagl has been the definitive NTFS-link tool on Windows since 1999 — hardlinks, junctions, symlinks, smart copy, clone, mirror, DeLorean copy. PowerLink starts deliberately narrow (dedup + clone + inspection) with a modern UI stack and no kernel dependencies, aimed at eventual inclusion in PowerToys.
