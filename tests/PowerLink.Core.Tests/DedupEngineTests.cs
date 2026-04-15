@@ -85,6 +85,27 @@ public class DedupEngineTests
     }
 
     [Fact]
+    public async Task Analyze_PreCancelledToken_ReturnsWasCancelledTrue()
+    {
+        using var temp = new TempDirectory();
+        var content = new byte[8192];
+        new Random(9).NextBytes(content);
+        temp.CreateFile("a.bin", content);
+        temp.CreateFile("b.bin", content);
+
+        var scanner = new FileScanner();
+        var records = await scanner.ScanAsync(new[] { temp.Path });
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var engine = new DedupEngine();
+        var result = await engine.AnalyzeAsync(records, cts.Token);
+
+        Assert.True(result.WasCancelled);
+    }
+
+    [Fact]
     public async Task CreatePlan_ProducesOneActionPerDuplicate()
     {
         using var temp = new TempDirectory();

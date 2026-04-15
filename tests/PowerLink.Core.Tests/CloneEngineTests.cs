@@ -73,4 +73,26 @@ public class CloneEngineTests
         await Assert.ThrowsAsync<DirectoryNotFoundException>(
             () => engine.CloneAsync(missing, dest));
     }
+
+    [Fact]
+    public async Task Clone_DestAlreadyExists_NestsUnderSourceName()
+    {
+        using var temp = new TempDirectory();
+        var source = temp.CreateSubDirectory("mydata");
+        File.WriteAllText(Path.Combine(source, "a.txt"), "hello");
+        File.WriteAllText(Path.Combine(source, "b.txt"), "world");
+
+        // Dest already exists — engine should treat it as the PARENT and
+        // clone into `dest/mydata/` (cp -r / xcopy default).
+        var dest = temp.CreateSubDirectory("parent");
+
+        var engine = new CloneEngine();
+        var result = await engine.CloneAsync(source, dest);
+
+        var nested = Path.Combine(dest, "mydata");
+        Assert.Equal(nested, result.EffectiveDestPath);
+        Assert.True(File.Exists(Path.Combine(nested, "a.txt")));
+        Assert.True(File.Exists(Path.Combine(nested, "b.txt")));
+        Assert.Equal(2, result.FilesLinked);
+    }
 }
