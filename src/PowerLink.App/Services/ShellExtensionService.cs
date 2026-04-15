@@ -5,7 +5,7 @@ namespace PowerLink.App.Services;
 
 public enum ShellVerbTarget { Cli, App }
 
-public enum ShellVerbKind { ContextMenu, OverlayHandler }
+public enum ShellVerbKind { ContextMenu, OverlayHandler, DropHandler }
 
 public sealed record ShellVerbKey(string RelativeKeyPath, string CommandArgs);
 
@@ -33,6 +33,11 @@ public static class ShellExtensionService
     private const string OverlayRegName = " PowerLinkHardlink";
     private const string OverlayRoot =
         @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\ShellIconOverlayIdentifiers";
+
+    // Mirrors CLSID_PowerLinkDropHandler in DropHandler.h.
+    private const string DropClsid = "{4BA9E8F3-7D1A-4E6C-9E3B-8F2D7C4A1B59}";
+    private const string DropRegName = "PowerLinkDrop";
+    private const string DropDescription = "PowerLink Drop Handler";
 
     public static IReadOnlyList<ShellVerb> AllVerbs { get; } = new[]
     {
@@ -129,10 +134,27 @@ public static class ShellExtensionService
         },
     };
 
+    public static IReadOnlyList<ShellVerb> DropVerbs { get; } = new[]
+    {
+        new ShellVerb
+        {
+            Id = "PowerLinkDropHandler",
+            Label = "PowerLink drop handler",
+            Description = "Right-drag files/folders onto a folder and choose 'Hardlink here' or 'Clone tree here'. One DLL adds both menu items. Per-user HKCU, no admin.",
+            TargetsText = "Right-drag onto Folder",
+            Executable = ShellVerbTarget.App,
+            Keys = Array.Empty<ShellVerbKey>(),
+            Kind = ShellVerbKind.DropHandler,
+            RequiresElevation = false,
+        },
+    };
+
     public static bool IsInstalled(ShellVerb verb)
     {
         if (verb.Kind == ShellVerbKind.OverlayHandler)
             return IsOverlayInstalled();
+        if (verb.Kind == ShellVerbKind.DropHandler)
+            return IsDropHandlerInstalled();
 
         foreach (var key in verb.Keys)
         {
@@ -157,6 +179,44 @@ public static class ShellExtensionService
     {
         using var root = Registry.LocalMachine.OpenSubKey(OverlayRoot);
         return root?.GetSubKeyNames().Length ?? 0;
+    }
+
+    public static bool IsDropHandlerInstalled()
+    {
+        using var cls = Registry.CurrentUser.OpenSubKey(
+            $@"{ClassesRoot}\CLSID\{DropClsid}\InprocServer32");
+        using var drop = Registry.CurrentUser.OpenSubKey(
+            $@"{ClassesRoot}\Directory\shellex\DragDropHandlers\{DropRegName}");
+        return cls is not null && drop is not null;
+    }
+
+    public static void InstallDropHandler(string dllPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(dllPath);
+        if (!File.Exists(dllPath))
+            throw new FileNotFoundException("Shell extension DLL not found.", dllPath);
+
+        using (var clsid = Registry.CurrentUser.CreateSubKey(
+            $@"{ClassesRoot}\CLSID\{DropClsid}", writable: true)
+            ?? throw new InvalidOperationException("Failed to create CLSID key."))
+        {
+            clsid.SetValue(string.Empty, DropDescription, RegistryValueKind.String);
+            using var inproc = clsid.CreateSubKey("InprocServer32", writable: true)
+                ?? throw new InvalidOperationException("Failed to create InprocServer32 key.");
+            inproc.SetValue(string.Empty, dllPath, RegistryValueKind.String);
+            inproc.SetValue("ThreadingModel", "Apartment", RegistryValueKind.String);
+        }
+
+        using var drop = Registry.CurrentUser.CreateSubKey(
+            $@"{ClassesRoot}\Directory\shellex\DragDropHandlers\{DropRegName}", writable: true)
+            ?? throw new InvalidOperationException("Failed to create drop handler registration key.");
+        drop.SetValue(string.Empty, DropClsid, RegistryValueKind.String);
+    }
+
+    public static void UninstallDropHandler()
+    {
+        DeleteSubKeyTree($@"{ClassesRoot}\Directory\shellex\DragDropHandlers\{DropRegName}");
+        DeleteSubKeyTree($@"{ClassesRoot}\CLSID\{DropClsid}");
     }
 
     public static void Install(ShellVerb verb, string cliPath, string appPath, string iconPath)

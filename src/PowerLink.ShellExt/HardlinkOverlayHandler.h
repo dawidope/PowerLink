@@ -5,9 +5,6 @@
 constexpr GUID CLSID_HardlinkOverlayHandler =
     { 0x8E62D9DE, 0x27D3, 0x4C1E, { 0x8A, 0x55, 0xCA, 0xDF, 0x97, 0xD3, 0xEB, 0x20 } };
 
-extern std::atomic<LONG> g_dllRefCount;
-extern HMODULE g_hModule;
-
 class HardlinkOverlayHandler : public IShellIconOverlayIdentifier
 {
 public:

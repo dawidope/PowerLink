@@ -1,12 +1,18 @@
 #include "pch.h"
 #include "HardlinkOverlayHandler.h"
+#include "DropHandler.h"
 
 namespace
 {
+    using FactoryFn = IUnknown* (*)();
+
+    IUnknown* CreateOverlay() { return static_cast<IShellIconOverlayIdentifier*>(new (std::nothrow) HardlinkOverlayHandler()); }
+    IUnknown* CreateDrop()    { return static_cast<IShellExtInit*>(new (std::nothrow) PowerLinkDropHandler()); }
+
     class ClassFactory : public IClassFactory
     {
     public:
-        ClassFactory() : _refCount(1)
+        explicit ClassFactory(FactoryFn create) : _create(create), _refCount(1)
         {
             g_dllRefCount.fetch_add(1, std::memory_order_relaxed);
         }
@@ -46,11 +52,11 @@ namespace
             *ppv = nullptr;
             if (outer != nullptr) return CLASS_E_NOAGGREGATION;
 
-            auto* handler = new (std::nothrow) HardlinkOverlayHandler();
-            if (handler == nullptr) return E_OUTOFMEMORY;
+            IUnknown* instance = _create();
+            if (instance == nullptr) return E_OUTOFMEMORY;
 
-            const HRESULT hr = handler->QueryInterface(riid, ppv);
-            handler->Release();
+            const HRESULT hr = instance->QueryInterface(riid, ppv);
+            instance->Release();
             return hr;
         }
 
@@ -65,6 +71,7 @@ namespace
 
     private:
         ~ClassFactory() = default;
+        FactoryFn _create;
         std::atomic<ULONG> _refCount;
     };
 }
@@ -73,9 +80,13 @@ STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, void** ppv)
 {
     if (ppv == nullptr) return E_POINTER;
     *ppv = nullptr;
-    if (rclsid != CLSID_HardlinkOverlayHandler) return CLASS_E_CLASSNOTAVAILABLE;
 
-    auto* factory = new (std::nothrow) ClassFactory();
+    FactoryFn create = nullptr;
+    if (rclsid == CLSID_HardlinkOverlayHandler)      create = CreateOverlay;
+    else if (rclsid == CLSID_PowerLinkDropHandler)   create = CreateDrop;
+    else                                             return CLASS_E_CLASSNOTAVAILABLE;
+
+    auto* factory = new (std::nothrow) ClassFactory(create);
     if (factory == nullptr) return E_OUTOFMEMORY;
 
     const HRESULT hr = factory->QueryInterface(riid, ppv);

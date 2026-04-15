@@ -75,6 +75,7 @@
     <ClInclude Include="HardlinkOverlayHandler.h" />
     <ClInclude Include="HardlinkDetection.h" />
     <ClInclude Include="HardlinkCache.h" />
+    <ClInclude Include="DropHandler.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
@@ -88,6 +89,7 @@
     <ClCompile Include="Module.cpp" />
     <ClCompile Include="HardlinkOverlayHandler.cpp" />
     <ClCompile Include="HardlinkDetection.cpp" />
+    <ClCompile Include="DropHandler.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="PowerLink.ShellExt.def" />

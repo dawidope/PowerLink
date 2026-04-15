@@ -15,12 +15,14 @@ public partial class SettingsViewModel : ObservableObject
 
     public ObservableCollection<ShellVerbViewModel> Verbs { get; } = new();
     public ObservableCollection<ShellVerbViewModel> OverlayVerbs { get; } = new();
+    public ObservableCollection<ShellVerbViewModel> DropVerbs { get; } = new();
 
     [ObservableProperty] private string _cliPath = string.Empty;
     [ObservableProperty] private string _appPath = string.Empty;
     [ObservableProperty] private string? _pickedPathText;
     [ObservableProperty] private string? _operationStatus;
     [ObservableProperty] private string? _overlayStatus;
+    [ObservableProperty] private string? _dropStatus;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PickedVisibility))]
@@ -37,6 +39,8 @@ public partial class SettingsViewModel : ObservableObject
             Verbs.Add(new ShellVerbViewModel { Verb = verb });
         foreach (var verb in ShellExtensionService.OverlayVerbs)
             OverlayVerbs.Add(new ShellVerbViewModel { Verb = verb });
+        foreach (var verb in ShellExtensionService.DropVerbs)
+            DropVerbs.Add(new ShellVerbViewModel { Verb = verb });
         Refresh();
     }
 
@@ -47,6 +51,7 @@ public partial class SettingsViewModel : ObservableObject
 
         SyncVerbStates(Verbs);
         SyncVerbStates(OverlayVerbs);
+        SyncVerbStates(DropVerbs);
 
         var picked = PickedSourceStore.TryLoad();
         HasPicked = picked is not null;
@@ -201,11 +206,60 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void ApplyDropChanges()
+    {
+        var install = DropVerbs.Any(v => v.ShouldInstall && !v.IsInstalled);
+        var uninstall = DropVerbs.Any(v => !v.ShouldInstall && v.IsInstalled);
+        if (!install && !uninstall)
+        {
+            DropStatus = "No changes.";
+            return;
+        }
+
+        try
+        {
+            var installed = 0;
+            var uninstalled = 0;
+            foreach (var v in DropVerbs)
+            {
+                if (v.ShouldInstall && !v.IsInstalled)
+                {
+                    var dllPath = ShellExtensionService.DetectShellExtDllPath();
+                    if (!File.Exists(dllPath))
+                    {
+                        DropStatus = $"PowerLink.ShellExt.dll not found at {dllPath}. Build the C++ project first.";
+                        return;
+                    }
+                    ShellExtensionService.InstallDropHandler(dllPath);
+                    installed++;
+                }
+                else if (!v.ShouldInstall && v.IsInstalled)
+                {
+                    ShellExtensionService.UninstallDropHandler();
+                    uninstalled++;
+                }
+            }
+            Refresh();
+            DropStatus = (installed, uninstalled) switch
+            {
+                (_, 0) => "Drop handler installed. Restart Explorer to activate.",
+                (0, _) => "Drop handler uninstalled. Restart Explorer to detach.",
+                _ => "Applied. Restart Explorer.",
+            };
+        }
+        catch (Exception ex)
+        {
+            DropStatus = $"Apply failed: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
     private void RestartExplorer()
     {
         ShellExtensionService.RestartExplorer();
         OperationStatus = "Explorer restarted.";
         OverlayStatus = "Explorer restarted.";
+        DropStatus = "Explorer restarted.";
     }
 
     [RelayCommand]
