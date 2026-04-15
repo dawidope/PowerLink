@@ -152,6 +152,13 @@
                                 <TextBlock Text="Restart Explorer"/>
                             </StackPanel>
                         </Button>
+                        <Button Command="{x:Bind ViewModel.ClearIconCacheCommand}"
+                                ToolTipService.ToolTip="Wipe Explorer's icon cache (iconcache_*.db) and restart explorer.exe. Use after rebuilding the overlay DLL — Windows otherwise keeps showing old badges. First folder open will be slower as the cache rebuilds.">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <SymbolIcon Symbol="Delete"/>
+                                <TextBlock Text="Clear icon cache"/>
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
 
                     <TextBlock Text="{x:Bind ViewModel.OverlayStatus, Mode=OneWay}"

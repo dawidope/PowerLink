@@ -262,7 +262,28 @@ public static class ShellExtensionService
 
     public static void RestartExplorer()
     {
-        // Kill explorer first — icon cache db files are locked while it runs.
+        try
+        {
+            foreach (var p in Process.GetProcessesByName("explorer"))
+            {
+                try { p.Kill(); } catch { /* explorer auto-restarts itself */ }
+            }
+        }
+        catch
+        {
+            // Best effort. Windows respawns explorer.exe automatically.
+        }
+    }
+
+    /// <summary>
+    /// Force-clears Explorer's icon cache. Mostly useful during overlay-handler
+    /// development — Win10/11 caches rendered overlays aggressively, so a
+    /// rebuilt DLL keeps showing old badges until the cache is wiped.
+    /// Returns the number of cache files deleted.
+    /// </summary>
+    public static int ClearIconCache()
+    {
+        // Cache db files are locked while explorer.exe runs.
         try
         {
             foreach (var p in Process.GetProcessesByName("explorer"))
@@ -272,38 +293,38 @@ public static class ShellExtensionService
         }
         catch { }
 
-        // Wipe icon cache so updated overlay/file icons re-render. Without
-        // this, Explorer keeps showing the previous overlay even after the
-        // DLL is replaced — caching is aggressive on Win10/11.
-        DeleteIconCacheFiles();
-
-        // Windows respawns explorer.exe on its own a moment later.
-    }
-
-    private static void DeleteIconCacheFiles()
-    {
+        var deleted = 0;
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
-        TryDelete(Path.Combine(local, "IconCache.db"));
+        if (TryDeleteFile(Path.Combine(local, "IconCache.db"))) deleted++;
 
         var explorerCacheDir = Path.Combine(local, "Microsoft", "Windows", "Explorer");
-        if (!Directory.Exists(explorerCacheDir)) return;
-
-        // iconcache_*.db is the per-size icon cache (Win10/11). Leave the
-        // thumbcache_*.db files alone — those are user content thumbnails
-        // unrelated to overlay handlers.
-        try
+        if (Directory.Exists(explorerCacheDir))
         {
-            foreach (var f in Directory.EnumerateFiles(explorerCacheDir, "iconcache_*.db"))
-                TryDelete(f);
+            // iconcache_*.db only — never touch thumbcache_*.db, which holds
+            // user-content thumbnails (photos, videos) and is expensive to
+            // rebuild while being unrelated to overlay handlers.
+            try
+            {
+                foreach (var f in Directory.EnumerateFiles(explorerCacheDir, "iconcache_*.db"))
+                    if (TryDeleteFile(f)) deleted++;
+            }
+            catch { }
         }
-        catch { }
+
+        // Windows will respawn explorer.exe on its own.
+        return deleted;
     }
 
-    private static void TryDelete(string path)
+    private static bool TryDeleteFile(string path)
     {
-        try { if (File.Exists(path)) File.Delete(path); }
-        catch { /* may still be locked — best effort */ }
+        try
+        {
+            if (!File.Exists(path)) return false;
+            File.Delete(path);
+            return true;
+        }
+        catch { return false; /* locked — best effort */ }
     }
 
     private static void WriteVerb(string keyPath, string menuText, string? icon, string command)

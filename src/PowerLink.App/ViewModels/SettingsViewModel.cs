@@ -198,6 +198,15 @@ public partial class SettingsViewModel : ObservableObject
         OverlayStatus = "Explorer restarted.";
     }
 
+    [RelayCommand]
+    private void ClearIconCache()
+    {
+        var deleted = ShellExtensionService.ClearIconCache();
+        OverlayStatus = deleted == 0
+            ? "No cache files deleted (already clean or locked). Explorer restarting…"
+            : $"Cleared {deleted} icon cache file(s). Explorer restarting; first folder open will be slower as the cache rebuilds.";
+    }
+
     [RelayCommand(CanExecute = nameof(CanClearPick))]
     private void ClearPick()
     {
