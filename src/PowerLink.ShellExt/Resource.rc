@@ -1,3 +1,3 @@
 #include "resource.h"
 
-IDI_HARDLINK_OVERLAY ICON "..\\PowerLink.App\\Assets\\Icon.ico"
+IDI_HARDLINK_OVERLAY ICON "assets\\hardlink-overlay.ico"
