@@ -9,8 +9,13 @@ namespace PowerLink.App;
 
 public sealed partial class MainWindow : Window
 {
-    public MainWindow()
+    private readonly LaunchPreset? _preset;
+
+    public MainWindow() : this(null) { }
+
+    public MainWindow(LaunchPreset? preset)
     {
+        _preset = preset;
         InitializeComponent();
         Title = "PowerLink";
         SetWindowIcon();
@@ -20,7 +25,7 @@ public sealed partial class MainWindow : Window
 
     private void NavigateInitialPage()
     {
-        var preset = App.Preset;
+        var preset = _preset;
         if (preset is null)
         {
             ContentFrame.Navigate(typeof(DedupPage));
