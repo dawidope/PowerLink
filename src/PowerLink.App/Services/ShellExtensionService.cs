@@ -5,6 +5,8 @@ namespace PowerLink.App.Services;
 
 public enum ShellVerbTarget { Cli, App }
 
+public enum ShellVerbKind { ContextMenu, OverlayHandler }
+
 public sealed record ShellVerbKey(string RelativeKeyPath, string CommandArgs);
 
 public sealed record ShellVerb
@@ -15,12 +17,22 @@ public sealed record ShellVerb
     public required string TargetsText { get; init; }
     public required ShellVerbTarget Executable { get; init; }
     public required IReadOnlyList<ShellVerbKey> Keys { get; init; }
+    public ShellVerbKind Kind { get; init; } = ShellVerbKind.ContextMenu;
+    public bool RequiresElevation { get; init; }
 }
 
 public static class ShellExtensionService
 {
-    // All registrations live under HKCU so no admin elevation is needed.
+    // Context-menu registrations live under HKCU so no admin elevation is needed.
+    // Overlay-handler registrations live under HKLM (Windows reads overlays
+    // only from HKLM) — those go through PowerLink.Cli with UAC elevation.
     private const string ClassesRoot = @"Software\Classes";
+
+    // Mirrors PowerLink.Cli.OverlayInstaller — keep in sync.
+    private const string OverlayClsid = "{8E62D9DE-27D3-4C1E-8A55-CADF97D3EB20}";
+    private const string OverlayRegName = " PowerLinkHardlink";
+    private const string OverlayRoot =
+        @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\ShellIconOverlayIdentifiers";
 
     public static IReadOnlyList<ShellVerb> AllVerbs { get; } = new[]
     {
@@ -102,8 +114,26 @@ public static class ShellExtensionService
         },
     };
 
+    public static IReadOnlyList<ShellVerb> OverlayVerbs { get; } = new[]
+    {
+        new ShellVerb
+        {
+            Id = "PowerLinkHardlinkOverlay",
+            Label = "Hardlink overlay icon",
+            Description = "Show a small badge on the icon of any file that's a hardlink (has 2+ names on disk). Quick visual check across every Explorer window. Uses 1 of 15 Windows overlay slots.",
+            TargetsText = "All files in Explorer",
+            Executable = ShellVerbTarget.Cli,
+            Keys = Array.Empty<ShellVerbKey>(),
+            Kind = ShellVerbKind.OverlayHandler,
+            RequiresElevation = true,
+        },
+    };
+
     public static bool IsInstalled(ShellVerb verb)
     {
+        if (verb.Kind == ShellVerbKind.OverlayHandler)
+            return IsOverlayInstalled();
+
         foreach (var key in verb.Keys)
         {
             using var k = OpenSubKey($@"{ClassesRoot}\{key.RelativeKeyPath}");
@@ -113,6 +143,21 @@ public static class ShellExtensionService
     }
 
     public static bool IsAnyInstalled() => AllVerbs.Any(IsInstalled);
+
+    public static bool IsOverlayInstalled()
+    {
+        using var cls = Registry.LocalMachine.OpenSubKey(
+            $@"SOFTWARE\Classes\CLSID\{OverlayClsid}\InprocServer32");
+        using var overlay = Registry.LocalMachine.OpenSubKey(
+            $@"{OverlayRoot}\{OverlayRegName}");
+        return cls is not null && overlay is not null;
+    }
+
+    public static int CountOverlayHandlersOnSystem()
+    {
+        using var root = Registry.LocalMachine.OpenSubKey(OverlayRoot);
+        return root?.GetSubKeyNames().Length ?? 0;
+    }
 
     public static void Install(ShellVerb verb, string cliPath, string appPath, string iconPath)
     {
@@ -177,6 +222,34 @@ public static class ShellExtensionService
         var self = Environment.ProcessPath;
         if (!string.IsNullOrEmpty(self) && File.Exists(self)) return self;
         return Path.Combine(AppContext.BaseDirectory, "PowerLink.App.exe");
+    }
+
+    public static string DetectShellExtDllPath()
+    {
+        var baseDir = AppContext.BaseDirectory;
+
+        // Production layout — DLL sits next to App.exe (post-build copy).
+        var sameFolder = Path.Combine(baseDir, "PowerLink.ShellExt.dll");
+        if (File.Exists(sameFolder)) return sameFolder;
+
+        // Development layout — sibling project's bin folder.
+        for (var up = 3; up <= 6; up++)
+        {
+            var segments = new string[up + 1];
+            segments[0] = baseDir;
+            for (var i = 1; i <= up; i++) segments[i] = "..";
+            var ancestor = Path.GetFullPath(Path.Combine(segments));
+
+            var dllBin = Path.Combine(ancestor, "PowerLink.ShellExt", "x64");
+            if (!Directory.Exists(dllBin)) continue;
+
+            var match = Directory.EnumerateFiles(dllBin, "PowerLink.ShellExt.dll", SearchOption.AllDirectories)
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault();
+            if (match is not null) return match;
+        }
+
+        return sameFolder;
     }
 
     public static string DetectIconPath()

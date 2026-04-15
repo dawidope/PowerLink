@@ -33,4 +33,29 @@
     <ProjectReference Include="..\PowerLink.Core\PowerLink.Core.csproj" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <_ShellExtProject>..\PowerLink.ShellExt\PowerLink.ShellExt.vcxproj</_ShellExtProject>
+    <_ShellExtDll>..\PowerLink.ShellExt\x64\$(Configuration)\PowerLink.ShellExt.dll</_ShellExtDll>
+  </PropertyGroup>
+
+  <Target Name="BuildShellExt" BeforeTargets="BeforeBuild">
+    <!-- Inner MSBuild does its own up-to-date check; outer Inputs/Outputs would
+         miss .cpp/.h edits since vcxproj alone doesn't reflect them. -->
+    <MSBuild Projects="$(_ShellExtProject)"
+             Properties="Configuration=$(Configuration);Platform=x64"
+             Targets="Build" />
+  </Target>
+
+  <Target Name="CopyShellExtDll"
+          AfterTargets="BuildShellExt"
+          BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <None Include="$(_ShellExtDll)" Condition="Exists('$(_ShellExtDll)')">
+        <Link>PowerLink.ShellExt.dll</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <Visible>false</Visible>
+      </None>
+    </ItemGroup>
+  </Target>
+
 </Project>

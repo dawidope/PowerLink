@@ -19,6 +19,8 @@ public static class Program
         root.Add(BuildPickCommand());
         root.Add(BuildDropCommand());
         root.Add(BuildShowLinksCommand());
+        root.Add(BuildInstallOverlayCommand());
+        root.Add(BuildUninstallOverlayCommand());
         return root.Parse(args).InvokeAsync();
     }
 
@@ -129,6 +131,68 @@ public static class Program
         cmd.Add(pathArg);
         cmd.SetAction((parseResult, _) => Task.FromResult(ShowLinks(parseResult.GetValue(pathArg)!)));
         return cmd;
+    }
+
+    private static Command BuildInstallOverlayCommand()
+    {
+        var dllArg = new Argument<string>("dll-path")
+        {
+            Description = "Path to PowerLink.ShellExt.dll.",
+        };
+        var cmd = new Command("install-overlay",
+            "Register the hardlink overlay handler in HKLM. Requires admin.");
+        cmd.Add(dllArg);
+        cmd.SetAction((parseResult, _) => Task.FromResult(InstallOverlay(parseResult.GetValue(dllArg)!)));
+        return cmd;
+    }
+
+    private static Command BuildUninstallOverlayCommand()
+    {
+        var cmd = new Command("uninstall-overlay",
+            "Unregister the hardlink overlay handler from HKLM. Requires admin.");
+        cmd.SetAction((_, _) => Task.FromResult(UninstallOverlay()));
+        return cmd;
+    }
+
+    private static int InstallOverlay(string dllPath)
+    {
+        if (!OverlayInstaller.IsElevated())
+        {
+            Console.Error.WriteLine("install-overlay must run as administrator.");
+            return 2;
+        }
+        try
+        {
+            var fullPath = Path.GetFullPath(dllPath);
+            OverlayInstaller.Install(fullPath);
+            Console.WriteLine($"Registered overlay handler: {fullPath}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"install-overlay failed: {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int UninstallOverlay()
+    {
+        if (!OverlayInstaller.IsElevated())
+        {
+            Console.Error.WriteLine("uninstall-overlay must run as administrator.");
+            return 2;
+        }
+        try
+        {
+            OverlayInstaller.Uninstall();
+            Console.WriteLine("Unregistered overlay handler.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"uninstall-overlay failed: {ex.Message}");
+            return 1;
+        }
     }
 
     private static int ShowLinks(string path)

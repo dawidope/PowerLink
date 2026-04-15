@@ -14,6 +14,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Text="Settings" Style="{ThemeResource TitleTextBlockStyle}"/>
@@ -100,6 +101,56 @@
                     BorderBrush="{ThemeResource ControlElevationBorderBrush}"
                     Background="{ThemeResource SubtleFillColorTransparentBrush}">
                 <StackPanel Spacing="12">
+                    <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Overlay icons"/>
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75"
+                               Text="Small badge on file icons in Explorer for files that are hardlinks (have 2+ names on disk). Requires admin to install — Windows reads overlay handlers only from HKLM, not per-user. Uses 1 of 15 system-wide overlay slots."/>
+
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.OverlayVerbs, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ShellVerbViewModel">
+                                <Border Margin="0,0,0,6" Padding="12" CornerRadius="6" BorderThickness="1"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Grid.Column="0"
+                                                  IsChecked="{x:Bind ShouldInstall, Mode=TwoWay}"
+                                                  VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock Text="{x:Bind Label}" FontWeight="SemiBold"/>
+                                            <TextBlock Text="{x:Bind Description}" Opacity="0.7" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{x:Bind TargetsText}" Opacity="0.5"
+                                                       FontSize="11" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{x:Bind StatusText, Mode=OneWay}"
+                                                   FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource SystemAccentColor}"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Button Command="{x:Bind ViewModel.ApplyOverlayChangesCommand}"
+                            Style="{ThemeResource AccentButtonStyle}"
+                            ToolTipService.ToolTip="Triggers UAC — overlay handlers register in HKLM">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <SymbolIcon Symbol="Permissions"/>
+                            <TextBlock Text="Apply (requires admin)"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Row="3" CornerRadius="8" Padding="20" BorderThickness="1"
+                    BorderBrush="{ThemeResource ControlElevationBorderBrush}"
+                    Background="{ThemeResource SubtleFillColorTransparentBrush}">
+                <StackPanel Spacing="12">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -128,8 +179,8 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock Grid.Row="3" Opacity="0.5" FontSize="12"
-                       Text="Registry-based verbs under HKCU\Software\Classes. After changes: restart Explorer once."/>
+            <TextBlock Grid.Row="4" Opacity="0.5" FontSize="12"
+                       Text="Context menu verbs live under HKCU (per-user, no admin). Overlay handlers live under HKLM (admin required). After any change: restart Explorer once."/>
         </Grid>
     </ScrollViewer>
 </Page>

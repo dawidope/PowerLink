@@ -19,5 +19,10 @@ public partial class ShellVerbViewModel : ObservableObject
     public string Label => Verb.Label;
     public string Description => Verb.Description;
     public string TargetsText => Verb.TargetsText;
-    public string StatusText => IsInstalled ? "Installed" : "Not installed";
+    public string StatusText => (IsInstalled, Verb.RequiresElevation) switch
+    {
+        (true, _) => "Installed",
+        (false, true) => "Needs admin",
+        (false, false) => "Not installed",
+    };
 }

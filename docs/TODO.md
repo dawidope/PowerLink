@@ -57,6 +57,37 @@ menu.
 
 ---
 
+## Hardlink overlay handler — production polish
+
+The overlay handler ships in Phase 3 with a placeholder icon and minimal
+hardening. These need follow-up before any wider distribution:
+
+1. **Real chain-link icon**. Currently `GetOverlayInfo` points at
+   `%SystemRoot%\System32\imageres.dll,154` (Windows shortcut arrow).
+   Looks misleading — users will think files are shortcuts. Need a
+   proper multi-resolution `.ico` (16/24/32/48) in
+   `src/PowerLink.ShellExt/assets/`, then update `Resource.rc` and
+   `GetOverlayInfo` to point at the embedded resource.
+2. **Code signing**. `PowerLink.ShellExt.dll` is unsigned. Loads fine in
+   Explorer locally but SmartScreen will flag it on download. Self-sign
+   for dev/test, real cert before any distribution.
+3. **ARM64 build**. `vcxproj` only declares `x64` configurations. Add
+   `ARM64|ARM64` to match App's RID. PowerToys ships both.
+4. **Integration test**. Spin up an xunit test that `LoadLibrary`s
+   `PowerLink.ShellExt.dll`, calls `DllGetClassObject` for the CLSID,
+   QIs to `IShellIconOverlayIdentifier`, then verifies `IsMemberOf`
+   returns S_OK for a freshly hardlinked file and S_FALSE for a regular
+   one. No HKLM registration needed — just the DLL.
+5. **Slot war pre-flight**. `SettingsViewModel.ApplyOverlayChangesAsync`
+   warns at 14+ existing handlers, but the warning is just status text.
+   Make it a proper dialog with the actual list of competing handlers
+   and "Continue anyway?" / "Cancel" buttons.
+6. **Performance regression test**. Add a stress test: enumerate 1000
+   files in a temp dir, call `IsHardlink` on each, assert P50 < 200μs
+   warm and < 2ms cold. Catches cache regressions.
+
+---
+
 ## Single-instance App activation for shell verbs
 
 **Goal:** clicking a shell verb (e.g. "PowerLink: Deduplicate folder")
