@@ -3,6 +3,8 @@
 
 namespace
 {
+    enum class ActionTargets { AnyFileOrFolder, FileOnly, FolderOnly };
+
     struct ActionInfo
     {
         PCWSTR title;
@@ -10,6 +12,7 @@ namespace
         bool   useCli;         // true → PowerLink.Cli.exe, false → PowerLink.App.exe
         PCWSTR argTemplate;    // printf-style, %s = single quoted path
         bool   perItem;        // spawn once per selected path (Pick), else once for the first path
+        ActionTargets targets; // hides the sub-command when the selection type doesn't fit
     };
 
     constexpr ModernAction kAllActions[] = {
@@ -24,12 +27,12 @@ namespace
     const ActionInfo& Info(ModernAction a)
     {
         static const ActionInfo infos[] = {
-            { L"Pick as link source",      L"Remember this path as the source for a later Drop",                true,  L"pick \"%s\"",       true  },
-            { L"Drop as hardlink here",    L"Make a hardlink (file) or a tree of hardlinks (folder) from the picked source", true,  L"drop \"%s\"",      false },
-            { L"Show hardlinks",           L"List every path on this volume sharing this file's data",          true,  L"show-links \"%s\"", false },
-            { L"Inspect for hardlinks",    L"Open the Inspector with this folder",                              false, L"--inspect \"%s\"",  false },
-            { L"Deduplicate folder",       L"Open the Deduplicate page with this folder added",                 false, L"--dedup \"%s\"",    false },
-            { L"Clone folder (hardlinks)", L"Mirror folder tree as hardlinks — same volume only",               false, L"--clone \"%s\"",    false },
+            { L"Pick as link source",      L"Remember this path as the source for a later Drop",                true,  L"pick \"%s\"",       true,  ActionTargets::AnyFileOrFolder },
+            { L"Drop as hardlink here",    L"Make a hardlink (file) or a tree of hardlinks (folder) from the picked source", true,  L"drop \"%s\"",      false, ActionTargets::FolderOnly },
+            { L"Show hardlinks",           L"List every path on this volume sharing this file's data",          true,  L"show-links \"%s\"", false, ActionTargets::FileOnly },
+            { L"Inspect for hardlinks",    L"Open the Inspector with this folder",                              false, L"--inspect \"%s\"",  false, ActionTargets::FolderOnly },
+            { L"Deduplicate folder",       L"Open the Deduplicate page with this folder added",                 false, L"--dedup \"%s\"",    false, ActionTargets::FolderOnly },
+            { L"Clone folder (hardlinks)", L"Mirror folder tree as hardlinks — same volume only",               false, L"--clone \"%s\"",    false, ActionTargets::FolderOnly },
         };
         return infos[static_cast<size_t>(a)];
     }
@@ -74,9 +77,11 @@ namespace
         return !out.empty();
     }
 
-    // Append a line to %TEMP%\powerlink-menu.log. Only active in debug diagnostics —
-    // lets us confirm whether the shell is reaching Invoke at all and what happened
-    // to the child-process spawn inside the AppX surrogate.
+    // Append a line to %TEMP%\powerlink-menu.log. Only compiled in Debug builds
+    // (PowerLink.ShellExt.vcxproj defines _DEBUG there) — in Release this
+    // collapses to an empty inline function so there's no per-invoke file I/O
+    // or context-menu overhead on end-user machines.
+#ifdef _DEBUG
     void DebugLog(const std::wstring& msg)
     {
         WCHAR temp[MAX_PATH]{};
@@ -94,7 +99,6 @@ namespace
                          st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 
         const std::wstring line = std::wstring(prefix) + msg + L"\r\n";
-        // UTF-8 convert for readability in Notepad.
         const int cb = WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.size(),
                                            nullptr, 0, nullptr, nullptr);
         std::vector<char> utf8((size_t)cb);
@@ -103,6 +107,9 @@ namespace
         WriteFile(h, utf8.data(), (DWORD)utf8.size(), &written, nullptr);
         CloseHandle(h);
     }
+#else
+    inline void DebugLog(const std::wstring&) {}
+#endif
 
     // Our DLL is hosted in dllhost.exe with our AppX package identity (via
     // com:SurrogateServer in the manifest). Any child spawned with a plain
@@ -269,10 +276,36 @@ IFACEMETHODIMP ModernSubCommand::GetCanonicalName(GUID* pguidCommandName)
     return S_OK;
 }
 
-IFACEMETHODIMP ModernSubCommand::GetState(IShellItemArray*, BOOL, EXPCMDSTATE* pCmdState)
+IFACEMETHODIMP ModernSubCommand::GetState(IShellItemArray* items, BOOL, EXPCMDSTATE* pCmdState)
 {
     if (pCmdState == nullptr) return E_POINTER;
     *pCmdState = ECS_ENABLED;
+
+    const ActionTargets want = Info(_action).targets;
+    if (want == ActionTargets::AnyFileOrFolder) return S_OK;
+
+    // Background click on a folder passes an IShellItemArray containing the
+    // folder itself, so it naturally counts as FolderOnly-eligible. An empty
+    // or null array (rare) — default-hide for file-only, default-show for
+    // folder-only, matching intuition.
+    DWORD count = 0;
+    if (items == nullptr || FAILED(items->GetCount(&count)) || count == 0)
+    {
+        if (want == ActionTargets::FileOnly) *pCmdState = ECS_HIDDEN;
+        return S_OK;
+    }
+
+    IShellItem* first = nullptr;
+    if (FAILED(items->GetItemAt(0, &first)) || first == nullptr) return S_OK;
+
+    SFGAOF attribs = 0;
+    const HRESULT hr = first->GetAttributes(SFGAO_FOLDER, &attribs);
+    first->Release();
+    if (FAILED(hr)) return S_OK;
+
+    const bool isFolder = (attribs & SFGAO_FOLDER) != 0;
+    if (want == ActionTargets::FolderOnly && !isFolder) *pCmdState = ECS_HIDDEN;
+    if (want == ActionTargets::FileOnly && isFolder)    *pCmdState = ECS_HIDDEN;
     return S_OK;
 }
 

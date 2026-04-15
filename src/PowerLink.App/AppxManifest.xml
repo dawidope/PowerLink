@@ -79,6 +79,10 @@
               <desktop5:Verb Id="PowerLinkModern"
                              Clsid="E8A4F2B1-9D3C-4E7F-B5A8-1F2D3C4E5B6A" />
             </desktop5:ItemType>
+            <desktop5:ItemType Type="Directory\Background">
+              <desktop5:Verb Id="PowerLinkModern"
+                             Clsid="E8A4F2B1-9D3C-4E7F-B5A8-1F2D3C4E5B6A" />
+            </desktop5:ItemType>
           </desktop4:FileExplorerContextMenus>
         </desktop4:Extension>
       </Extensions>
