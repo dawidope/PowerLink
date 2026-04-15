@@ -20,6 +20,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _appPath = string.Empty;
     [ObservableProperty] private string? _pickedPathText;
     [ObservableProperty] private string? _operationStatus;
+    [ObservableProperty] private string? _overlayStatus;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PickedVisibility))]
@@ -127,14 +128,14 @@ public partial class SettingsViewModel : ObservableObject
         var uninstall = OverlayVerbs.Any(v => !v.ShouldInstall && v.IsInstalled);
         if (!install && !uninstall)
         {
-            OperationStatus = "No changes.";
+            OverlayStatus = "No changes.";
             return;
         }
 
         var dllPath = ShellExtensionService.DetectShellExtDllPath();
         if (install && !File.Exists(dllPath))
         {
-            OperationStatus = $"PowerLink.ShellExt.dll not found at {dllPath}. Build the C++ project first.";
+            OverlayStatus = $"PowerLink.ShellExt.dll not found at {dllPath}. Build the C++ project first.";
             return;
         }
 
@@ -142,7 +143,7 @@ public partial class SettingsViewModel : ObservableObject
         {
             var existing = ShellExtensionService.CountOverlayHandlersOnSystem();
             if (existing >= 14)
-                OperationStatus = $"Note: {existing} overlay handlers already registered. Windows loads only the first 15 alphabetically — PowerLink uses a leading-space name to win the sort.";
+                OverlayStatus = $"Note: {existing} overlay handlers already registered. Windows loads only the first 15 alphabetically — PowerLink uses a leading-space name to win the sort.";
         }
 
         var args = install
@@ -161,31 +162,31 @@ public partial class SettingsViewModel : ObservableObject
             });
             if (process is null)
             {
-                OperationStatus = "Cancelled.";
+                OverlayStatus = "Cancelled.";
                 return;
             }
 
             await process.WaitForExitAsync();
             if (process.ExitCode != 0)
             {
-                OperationStatus = $"Overlay {(install ? "install" : "uninstall")} failed (exit {process.ExitCode}).";
+                OverlayStatus = $"Overlay {(install ? "install" : "uninstall")} failed (exit {process.ExitCode}).";
                 Refresh();
                 return;
             }
 
             Refresh();
-            OperationStatus = install
+            OverlayStatus = install
                 ? "Overlay installed. Restart Explorer to see the badge."
                 : "Overlay uninstalled. Restart Explorer to remove the badge.";
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelled)
         {
-            OperationStatus = "Cancelled — overlay handler needs admin permission.";
+            OverlayStatus = "Cancelled — overlay handler needs admin permission.";
             Refresh();
         }
         catch (Exception ex)
         {
-            OperationStatus = $"Overlay change failed: {ex.Message}";
+            OverlayStatus = $"Overlay change failed: {ex.Message}";
         }
     }
 
@@ -194,6 +195,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         ShellExtensionService.RestartExplorer();
         OperationStatus = "Explorer restarted.";
+        OverlayStatus = "Explorer restarted.";
     }
 
     [RelayCommand(CanExecute = nameof(CanClearPick))]

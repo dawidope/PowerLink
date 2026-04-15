@@ -39,11 +39,18 @@
   </PropertyGroup>
 
   <Target Name="BuildShellExt" BeforeTargets="BeforeBuild">
-    <!-- Inner MSBuild does its own up-to-date check; outer Inputs/Outputs would
-         miss .cpp/.h edits since vcxproj alone doesn't reflect them. -->
-    <MSBuild Projects="$(_ShellExtProject)"
-             Properties="Configuration=$(Configuration);Platform=x64"
-             Targets="Build" />
+    <!-- dotnet CLI's MSBuild can't load .vcxproj (no C++ targets), so we
+         explicitly find VS's MSBuild via vswhere and shell out to it.
+         VS solution build picks up the same target without harm. -->
+    <PropertyGroup>
+      <_VsWhere>$(MSBuildProgramFiles32)\Microsoft Visual Studio\Installer\vswhere.exe</_VsWhere>
+    </PropertyGroup>
+    <Exec Command="&quot;$(_VsWhere)&quot; -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe"
+          ConsoleToMSBuild="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_VsMsBuildExe"/>
+    </Exec>
+    <Exec Command="&quot;$(_VsMsBuildExe)&quot; &quot;$(_ShellExtProject)&quot; -p:Configuration=$(Configuration) -p:Platform=x64 -nologo -v:minimal"
+          ConsoleToMSBuild="true" />
   </Target>
 
   <Target Name="CopyShellExtDll"

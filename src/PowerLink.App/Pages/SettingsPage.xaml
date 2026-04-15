@@ -136,14 +136,26 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <Button Command="{x:Bind ViewModel.ApplyOverlayChangesCommand}"
-                            Style="{ThemeResource AccentButtonStyle}"
-                            ToolTipService.ToolTip="Triggers UAC — overlay handlers register in HKLM">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <SymbolIcon Symbol="Permissions"/>
-                            <TextBlock Text="Apply (requires admin)"/>
-                        </StackPanel>
-                    </Button>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Command="{x:Bind ViewModel.ApplyOverlayChangesCommand}"
+                                Style="{ThemeResource AccentButtonStyle}"
+                                ToolTipService.ToolTip="Triggers UAC — overlay handlers register in HKLM">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <SymbolIcon Symbol="Permissions"/>
+                                <TextBlock Text="Apply (requires admin)"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{x:Bind ViewModel.RestartExplorerCommand}"
+                                ToolTipService.ToolTip="Restart explorer.exe so the badge appears or disappears">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <SymbolIcon Symbol="Refresh"/>
+                                <TextBlock Text="Restart Explorer"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <TextBlock Text="{x:Bind ViewModel.OverlayStatus, Mode=OneWay}"
+                               Opacity="0.8" TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
 
