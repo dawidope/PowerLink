@@ -39,21 +39,24 @@ BADGE_SIZES = {
 
 
 def best_source_frame(ico_path: Path, target: int) -> Image.Image:
-    """Pick the frame >= target, trim its transparent margins, then scale
-    to target. Trimming first means the badge fills the lower-left quadrant
-    edge-to-edge instead of inheriting the source ICO's centring padding."""
+    """Pick the frame >= target, trim transparent margins, then scale
+    proportionally to fit within target×target (preserves aspect ratio).
+    Caller decides where to paste it on the canvas."""
     with Image.open(ico_path) as im:
         sizes = sorted(im.ico.sizes())
         chosen = next((s for s in sizes if s[0] >= target), sizes[-1])
         im.size = chosen
         frame = im.copy().convert("RGBA")
 
-    bbox = frame.getbbox()  # tightest non-transparent rectangle
+    bbox = frame.getbbox()
     if bbox is not None:
         frame = frame.crop(bbox)
 
-    if frame.size != (target, target):
-        frame = frame.resize((target, target), Image.LANCZOS)
+    w, h = frame.size
+    scale = target / max(w, h)
+    new_size = (max(1, round(w * scale)), max(1, round(h * scale)))
+    if new_size != frame.size:
+        frame = frame.resize(new_size, Image.LANCZOS)
     return frame
 
 
@@ -98,7 +101,9 @@ def build_overlay() -> None:
     for canvas_size, badge_size in BADGE_SIZES.items():
         canvas = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
         badge = best_source_frame(SOURCE, badge_size)
-        canvas.paste(badge, (0, canvas_size - badge_size), badge)
+        # Anchor to the lower-LEFT corner; preserve badge's aspect ratio
+        # (badge.size may not equal badge_size×badge_size after trim).
+        canvas.paste(badge, (0, canvas_size - badge.height), badge)
         frames.append(canvas)
 
     write_ico(frames, OUTPUT)
