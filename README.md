@@ -56,9 +56,18 @@ All of this is driven from a WinUI 3 app and a matching CLI. The shell extension
 
 ---
 
+## Download
+
+Portable zips are published on the [Releases](../../releases) page. Two flavors per tagged release, both x64:
+
+- **`PowerLink-<version>-win-x64.zip`** — framework-dependent, ~5–10 MB. Requires the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) installed on the machine.
+- **`PowerLink-<version>-win-x64-selfcontained.zip`** — bundles the .NET runtime, ~80 MB. Nothing else to install.
+
+First run triggers Windows SmartScreen (the binaries aren't code-signed yet) — click **More info → Run anyway**.
+
 ## Quick start
 
-1. Download a release zip (not yet published — build from source for now) and extract anywhere.
+1. Download a zip from [Releases](../../releases), extract anywhere.
 2. Run `PowerLink.App.exe`.
 3. Pick an operation:
    - **Deduplicate** — add folders, press Scan (F5), review groups, press "Replace duplicates with hardlinks".

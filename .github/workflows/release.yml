@@ -1,0 +1,115 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: framework-dependent
+            self_contained: 'false'
+            suffix: win-x64
+          - variant: self-contained
+            self_contained: 'true'
+            suffix: win-x64-selfcontained
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore
+        run: dotnet restore PowerLink.slnx
+
+      - name: Publish App
+        run: >
+          dotnet publish src/PowerLink.App/PowerLink.App.csproj
+          -c Release
+          -r win-x64
+          -p:Platform=x64
+          -p:SelfContained=${{ matrix.self_contained }}
+          -p:PublishSingleFile=false
+          -p:PublishTrimmed=false
+          -o artifacts/${{ matrix.suffix }}
+
+      - name: Publish Cli into same folder
+        run: >
+          dotnet publish src/PowerLink.Cli/PowerLink.Cli.csproj
+          -c Release
+          -r win-x64
+          -p:Platform=x64
+          -p:SelfContained=${{ matrix.self_contained }}
+          -p:PublishSingleFile=false
+          -p:PublishTrimmed=false
+          -o artifacts/${{ matrix.suffix }}
+
+      - name: Sanity check payload
+        shell: pwsh
+        run: |
+          $required = @(
+            'PowerLink.App.exe',
+            'PowerLink.Cli.exe',
+            'PowerLink.ShellExt.dll',
+            'AppxManifest.xml',
+            'Assets/Icon.ico',
+            'Assets/icon.png'
+          )
+          $missing = @()
+          foreach ($f in $required) {
+            $p = "artifacts/${{ matrix.suffix }}/$f"
+            if (-not (Test-Path $p)) { $missing += $f }
+          }
+          if ($missing.Count -gt 0) {
+            Write-Error "Missing from publish output: $($missing -join ', ')"
+            Get-ChildItem artifacts/${{ matrix.suffix }} -Recurse | Select-Object -First 100
+            exit 1
+          }
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $ver = $tag -replace '^v',''
+          "version=$ver" >> $env:GITHUB_OUTPUT
+
+      - name: Zip
+        shell: pwsh
+        run: |
+          $zip = "PowerLink-${{ steps.ver.outputs.version }}-${{ matrix.suffix }}.zip"
+          Compress-Archive -Path artifacts/${{ matrix.suffix }}/* -DestinationPath $zip -CompressionLevel Optimal
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.suffix }}
+          path: PowerLink-*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/PowerLink-*.zip
+          draft: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
