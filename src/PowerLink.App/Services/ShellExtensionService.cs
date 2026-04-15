@@ -57,19 +57,23 @@ public static class ShellExtensionService
         var sameFolder = Path.Combine(baseDir, "PowerLink.Cli.exe");
         if (File.Exists(sameFolder)) return sameFolder;
 
-        // Development layout — siblings under src/.
-        // baseDir = .../src/PowerLink.App/bin/<plat>/<cfg>/<tfm>/
-        var candidates = new[]
+        // Development layout — walk up to find a sibling PowerLink.Cli/bin
+        // and glob for the exe under whatever TFM it was built for. Levels
+        // cover both `bin/<plat>/<cfg>/<tfm>` and `bin/<cfg>/<tfm>`.
+        for (var up = 3; up <= 5; up++)
         {
-            Path.Combine(baseDir, "..", "..", "..", "..", "..", "PowerLink.Cli", "bin", "Debug",   "net8.0", "PowerLink.Cli.exe"),
-            Path.Combine(baseDir, "..", "..", "..", "..", "..", "PowerLink.Cli", "bin", "Release", "net8.0", "PowerLink.Cli.exe"),
-            Path.Combine(baseDir, "..", "..", "..", "..",       "PowerLink.Cli", "bin", "Debug",   "net8.0", "PowerLink.Cli.exe"),
-            Path.Combine(baseDir, "..", "..", "..", "..",       "PowerLink.Cli", "bin", "Release", "net8.0", "PowerLink.Cli.exe"),
-        };
-        foreach (var c in candidates)
-        {
-            var full = Path.GetFullPath(c);
-            if (File.Exists(full)) return full;
+            var segments = new string[up + 1];
+            segments[0] = baseDir;
+            for (var i = 1; i <= up; i++) segments[i] = "..";
+            var ancestor = Path.GetFullPath(Path.Combine(segments));
+
+            var cliBin = Path.Combine(ancestor, "PowerLink.Cli", "bin");
+            if (!Directory.Exists(cliBin)) continue;
+
+            var match = Directory.EnumerateFiles(cliBin, "PowerLink.Cli.exe", SearchOption.AllDirectories)
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault();
+            if (match is not null) return match;
         }
 
         // Fall back to expected production location even if it doesn't exist yet.

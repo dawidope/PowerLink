@@ -129,7 +129,7 @@ public static class Program
 
         if (!isDir && !isFile)
         {
-            Console.Error.WriteLine($"Path not found: {full}");
+            ShellUi.ReportError("PowerLink: Pick failed", $"Path not found: {full}");
             return 1;
         }
 
@@ -149,20 +149,21 @@ public static class Program
         var picked = PickedSourceStore.TryLoad();
         if (picked is null)
         {
-            Console.Error.WriteLine("Nothing picked. Right-click a file or folder first and choose 'PowerLink: Pick as link source'.");
+            ShellUi.ReportError("PowerLink: Drop failed",
+                "Nothing picked. Right-click a file or folder first and choose 'PowerLink: Pick as link source'.");
             return 2;
         }
 
         var targetFull = Path.GetFullPath(target);
         if (!Directory.Exists(targetFull))
         {
-            Console.Error.WriteLine($"Target directory not found: {targetFull}");
+            ShellUi.ReportError("PowerLink: Drop failed", $"Target directory not found: {targetFull}");
             return 1;
         }
 
         if (!File.Exists(picked.Path) && !Directory.Exists(picked.Path))
         {
-            Console.Error.WriteLine($"Picked source no longer exists: {picked.Path}");
+            ShellUi.ReportError("PowerLink: Drop failed", $"Picked source no longer exists: {picked.Path}");
             return 3;
         }
 
@@ -181,13 +182,15 @@ public static class Program
             {
                 if (!Win32Hardlink.AreSameVolume(picked.Path, targetFull))
                 {
-                    Console.Error.WriteLine("Drop failed: source and target must be on the same NTFS volume. Hardlinks cannot cross volumes.");
+                    ShellUi.ReportError("PowerLink: Drop failed",
+                        "Source and target must be on the same NTFS volume. Hardlinks cannot cross volumes.");
                     return 1;
                 }
                 var linkPath = Path.Combine(targetFull, Path.GetFileName(picked.Path));
                 if (File.Exists(linkPath))
                 {
-                    Console.Error.WriteLine($"Drop failed: a file named '{Path.GetFileName(picked.Path)}' already exists in the target.");
+                    ShellUi.ReportError("PowerLink: Drop failed",
+                        $"A file named '{Path.GetFileName(picked.Path)}' already exists in the target.");
                     return 1;
                 }
                 Win32Hardlink.CreateHardLink(linkPath, picked.Path);
@@ -197,7 +200,7 @@ public static class Program
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Drop failed: {ex.Message}");
+            ShellUi.ReportError("PowerLink: Drop failed", ex.Message);
             return 1;
         }
     }
