@@ -6,6 +6,18 @@ NTFS hardlink tool for Windows — deduplicate identical files in place, clone d
 
 ---
 
+## Why
+
+I run a lot of AI models locally. Different pipelines pull in different checkpoints, but many of them ship with the **same supporting files** — text encoders, VAEs, CLIP weights, a dozen gigabytes each, copied verbatim across folders. Every time I downloaded a new model or assembled a custom setup, my disk usage grew by the size of the shared bits all over again, even though the bytes on disk were byte-for-byte identical.
+
+Windows doesn't have a first-class answer for this. Symlinks need admin or Developer Mode to create; junctions only work on folders; copy-on-write is ReFS only. **NTFS hardlinks** do the job — the same bytes appear under many names, `File.Copy` stays transparent, tools that open the file don't care — but the ergonomics on Windows are miserable. `mklink /H` one file at a time from an admin `cmd` isn't a workflow.
+
+I went looking for a tool and found an eight-year trail of PowerToys issues asking for exactly this — [#2527](https://github.com/microsoft/PowerToys/issues/2527), [#10047](https://github.com/microsoft/PowerToys/issues/10047), [#17887](https://github.com/microsoft/PowerToys/issues/17887), [#24571](https://github.com/microsoft/PowerToys/issues/24571), [#26607](https://github.com/microsoft/PowerToys/issues/26607), [#34247](https://github.com/microsoft/PowerToys/issues/34247). All closed as duplicates. None delivered. So I built it.
+
+PowerLink starts narrow: point it at a folder of models, it finds the duplicates, replaces them with hardlinks, your disk shrinks, every pipeline keeps working. The same operations are wired into Explorer so normal copy/paste/drag workflows can use hardlinks too.
+
+---
+
 ## Demo
 
 <!-- TODO: replace placeholder with a 30-60s screen capture showing: scan a folder, see duplicate groups, press "Replace duplicates with hardlinks", watch the space-saved number go up, confirm the files still open normally. -->
@@ -24,7 +36,9 @@ NTFS hardlink tool for Windows — deduplicate identical files in place, clone d
 
 **Show links.** Given any file, enumerate every name on the volume that points at the same data. Catches forgotten hardlinks.
 
-All of this is driven from a WinUI 3 app and a matching CLI. The shell extension plugs the same operations into Explorer — classic right-click menu, drag-and-drop handler, Windows 11 top-section menu, and an optional overlay badge on hardlinked files.
+**Spot hardlinks at a glance.** An optional overlay handler draws a small badge on the icon of any file that's a hardlink (i.e. has more than one name on disk). Works like the OneDrive or Dropbox sync badges — you see it in every Explorer view without having to open a tool. Install is opt-in and admin-only because Windows reads overlay handlers from HKLM.
+
+All of this is driven from a WinUI 3 app and a matching CLI. The shell extension plugs the same operations into Explorer — classic right-click menu, drag-and-drop handler, Windows 11 top-section menu, plus the overlay badge above.
 
 ---
 
@@ -168,7 +182,7 @@ Dedup algorithm: enumerate → group by `(volume, size)` → 4 KiB prefix XxHash
 - **ARM64 is compile-only.** The vcxproj has ARM64 configurations and the build graph is parameterised, but nobody has run the result on an ARM64 machine. Expect rough edges.
 - **15 overlay slots.** Windows loads only the first 15 overlay handlers in alphabetical order. PowerLink registers with a leading-space name to sort first, and asks for confirmation before installing if your system already has 14+ handlers.
 - **Unsupported:** symlinks, junctions, cross-volume operations, ReFS.
-- **Dedup verification is size-only.** The executor re-checks the canonical file's size between scan and apply, but not its hash — if a file is modified in place (same size) between scan and apply, the modified content is what ends up shared.
+- **Dedup verification is size-only.** Between scan and apply the executor re-checks that the canonical file still exists and matches the expected size — nothing else. The recorded hash is carried in the plan but never re-read, and the duplicate file isn't verified at all before being deleted. If either file is modified in place (same size) between scan and apply, the duplicate is deleted without warning and replaced with a hardlink to the canonical, so any edits to the duplicate are lost silently. Don't run large dedup plans while the same files are being written to.
 - **Not in PowerToys yet.** Long-term target is to land this as a PowerToys module (see [#2527](https://github.com/microsoft/PowerToys/issues/2527) and friends). For now it's a standalone project in the same stack (WinUI 3 + C++/COM + .NET 8) so that migration is plausible later.
 
 ---
