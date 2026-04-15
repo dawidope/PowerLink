@@ -12,6 +12,10 @@ public sealed partial class ClonePage : Page
     public ClonePage()
     {
         InitializeComponent();
+        // Cache the page so navigating away mid-clone doesn't orphan the
+        // ViewModel (work would keep running in the background but the UI
+        // would lose all visibility into it).
+        NavigationCacheMode = NavigationCacheMode.Required;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

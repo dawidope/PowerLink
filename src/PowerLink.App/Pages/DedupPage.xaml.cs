@@ -12,6 +12,10 @@ public sealed partial class DedupPage : Page
     public DedupPage()
     {
         InitializeComponent();
+        // Cache the page so navigating away mid-scan doesn't orphan the
+        // ViewModel (work would keep running in the background but the UI
+        // would lose all visibility into it).
+        NavigationCacheMode = NavigationCacheMode.Required;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

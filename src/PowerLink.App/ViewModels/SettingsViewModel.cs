@@ -45,25 +45,35 @@ public partial class SettingsViewModel : ObservableObject
         CliPath = ShellExtensionService.DetectCliPath();
         AppPath = ShellExtensionService.DetectAppPath();
 
-        foreach (var v in Verbs)
-        {
-            var installed = ShellExtensionService.IsInstalled(v.Verb);
-            v.IsInstalled = installed;
-            v.ShouldInstall = installed;
-        }
-
-        foreach (var v in OverlayVerbs)
-        {
-            var installed = ShellExtensionService.IsInstalled(v.Verb);
-            v.IsInstalled = installed;
-            v.ShouldInstall = installed;
-        }
+        SyncVerbStates(Verbs);
+        SyncVerbStates(OverlayVerbs);
 
         var picked = PickedSourceStore.TryLoad();
         HasPicked = picked is not null;
         PickedPathText = picked is null
             ? null
             : $"{(picked.IsDirectory ? "Folder" : "File")}: {picked.Path}\nPicked at: {picked.PickedAtUtc.ToLocalTime():g}";
+    }
+
+    /// <summary>
+    /// Re-reads each verb's installed state from the registry. If the user
+    /// has a pending checkbox change (ShouldInstall != IsInstalled before
+    /// the read), we preserve their intent rather than overwriting it —
+    /// otherwise the page-cached Settings page would lose pending edits
+    /// every time the user navigates away and back.
+    /// </summary>
+    private static void SyncVerbStates(System.Collections.Generic.IEnumerable<ShellVerbViewModel> verbs)
+    {
+        foreach (var v in verbs)
+        {
+            var oldInstalled = v.IsInstalled;
+            var userHasPendingChange = v.ShouldInstall != oldInstalled;
+
+            var newInstalled = ShellExtensionService.IsInstalled(v.Verb);
+            v.IsInstalled = newInstalled;
+            if (!userHasPendingChange)
+                v.ShouldInstall = newInstalled;
+        }
     }
 
     [RelayCommand]
