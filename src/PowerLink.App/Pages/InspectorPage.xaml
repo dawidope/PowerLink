@@ -141,6 +141,21 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+
+                                <StackPanel Spacing="2" Margin="0,6,0,0"
+                                            Visibility="{x:Bind ElsewhereListVisibility}">
+                                    <TextBlock Text="elsewhere (outside scanned folders):"
+                                               Opacity="0.55" FontSize="11" FontWeight="SemiBold"/>
+                                    <ItemsControl ItemsSource="{x:Bind PathsElsewhere}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="x:String">
+                                                <TextBlock Opacity="0.55" Text="{x:Bind}"
+                                                           FontFamily="Consolas" FontSize="12"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </DataTemplate>
