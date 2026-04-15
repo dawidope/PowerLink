@@ -52,9 +52,11 @@ All of this is driven from a WinUI 3 app and a matching CLI. The shell extension
 |---|---|
 | ![Clone page](docs/media/clone-page.png) | ![Settings page](docs/media/settings-page.png) |
 
-**Explorer context menu** — PowerLink submenu expanded on a file:
+**Explorer context menu** — classic right-click menu (under "Show more options" on Windows 11) on the left, Windows 11 modern top-section menu on the right. Both show the PowerLink submenu expanded:
 
-![Explorer context menu](docs/media/context-menu.png)
+| Classic | Windows 11 modern |
+|---|---|
+| ![Classic context menu](docs/media/context-menu-classic.png) | ![Modern Win11 menu](docs/media/context-menu-modern.png) |
 
 **Overlay badge** — the rightmost file is a hardlink and gets a small chain-link icon in the lower-left corner of its thumbnail:
 
