@@ -110,24 +110,40 @@ IFACEMETHODIMP PowerLinkDropHandler::Initialize(PCIDLIST_ABSOLUTE pidlFolder, ID
         return E_FAIL;
     }
 
-    const UINT count = DragQueryFileW(hDrop, 0xFFFFFFFF, nullptr, 0);
-    for (UINT i = 0; i < count; ++i)
+    // emplace_back into std::wstring vectors can throw bad_alloc. A
+    // propagating C++ exception out of Initialize would unwind through
+    // explorer.exe's COM plumbing and crash the shell, and would also leak
+    // the GlobalLock reference permanently. Catch-all + explicit cleanup
+    // contains both failure modes.
+    HRESULT result = S_OK;
+    try
     {
-        WCHAR path[MAX_PATH]{};
-        if (DragQueryFileW(hDrop, i, path, MAX_PATH) == 0) continue;
+        const UINT count = DragQueryFileW(hDrop, 0xFFFFFFFF, nullptr, 0);
+        for (UINT i = 0; i < count; ++i)
+        {
+            WCHAR path[MAX_PATH]{};
+            if (DragQueryFileW(hDrop, i, path, MAX_PATH) == 0) continue;
 
-        const DWORD attr = GetFileAttributesW(path);
-        if (attr == INVALID_FILE_ATTRIBUTES) continue;
+            const DWORD attr = GetFileAttributesW(path);
+            if (attr == INVALID_FILE_ATTRIBUTES) continue;
 
-        if (attr & FILE_ATTRIBUTE_DIRECTORY)
-            _sourceDirs.emplace_back(path);
-        else
-            _sourceFiles.emplace_back(path);
+            if (attr & FILE_ATTRIBUTE_DIRECTORY)
+                _sourceDirs.emplace_back(path);
+            else
+                _sourceFiles.emplace_back(path);
+        }
+    }
+    catch (...)
+    {
+        _sourceFiles.clear();
+        _sourceDirs.clear();
+        result = E_OUTOFMEMORY;
     }
 
     GlobalUnlock(sm.hGlobal);
     ReleaseStgMedium(&sm);
 
+    if (FAILED(result)) return result;
     return (_sourceFiles.empty() && _sourceDirs.empty()) ? E_INVALIDARG : S_OK;
 }
 
