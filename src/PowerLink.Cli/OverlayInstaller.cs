@@ -24,7 +24,13 @@ public static class OverlayInstaller
     {
         using var cls = Registry.LocalMachine.OpenSubKey($@"{ClsidRoot}\{Clsid}\InprocServer32");
         using var overlay = Registry.LocalMachine.OpenSubKey($@"{OverlayRoot}\{OverlayRegName}");
-        return cls is not null && overlay is not null;
+        if (cls is null || overlay is null) return false;
+
+        // Match ShellExtensionService.IsOverlayInstalled — a registration that
+        // points at a DLL no longer on disk (build cleaned, binary moved) is
+        // not really "installed", and reporting it as such lets re-install
+        // logic skip the very write it needs to repair the registration.
+        return cls.GetValue(string.Empty) is string dll && File.Exists(dll);
     }
 
     public static bool IsElevated()
