@@ -27,11 +27,40 @@
     <None Update="Assets\Icon.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="Assets\icon.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="AppxManifest.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\PowerLink.Core\PowerLink.Core.csproj" />
+    <!-- Triggers Cli build so its output is available for CopyCliOutput below.
+         ReferenceOutputAssembly=false stops MSBuild from adding Cli.exe as an
+         assembly reference (it's an Exe, not a library). -->
+    <ProjectReference Include="..\PowerLink.Cli\PowerLink.Cli.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <OutputItemType>None</OutputItemType>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+      <Private>false</Private>
+    </ProjectReference>
   </ItemGroup>
+
+  <!-- Modern-menu / drag-drop shell extensions spawn PowerLink.Cli.exe from the
+       DLL's folder. In dev layout Cli lives in its own sibling project, so after
+       the App build we mirror Cli's output dir alongside App.exe. -->
+  <Target Name="CopyCliOutput" AfterTargets="Build">
+    <ItemGroup>
+      <_CliOutputFiles Include="..\PowerLink.Cli\bin\$(Configuration)\net8.0-windows\*.*"
+                       Exclude="..\PowerLink.Cli\bin\$(Configuration)\net8.0-windows\*.xml" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_CliOutputFiles)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true"
+          ContinueOnError="true" />
+  </Target>
 
   <PropertyGroup>
     <_ShellExtProject>..\PowerLink.ShellExt\PowerLink.ShellExt.vcxproj</_ShellExtProject>

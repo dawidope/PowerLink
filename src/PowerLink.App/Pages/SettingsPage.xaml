@@ -16,6 +16,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Text="Settings" Style="{ThemeResource TitleTextBlockStyle}"/>
@@ -99,6 +100,68 @@
             </Border>
 
             <Border Grid.Row="3" CornerRadius="8" Padding="20" BorderThickness="1"
+                    BorderBrush="{ThemeResource ControlElevationBorderBrush}"
+                    Background="{ThemeResource SubtleFillColorTransparentBrush}">
+                <StackPanel Spacing="12">
+                    <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Windows 11 modern menu (experimental)"/>
+                    <TextBlock TextWrapping="Wrap" Opacity="0.75"
+                               Text="Adds a 'PowerLink' submenu to the TOP section of the Win11 right-click menu (no 'Show more options' needed). Registers a sparse MSIX package pointing at this app's folder — no signing. Requires Windows Developer Mode (Settings → Privacy &amp; security → For developers)."/>
+
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.ModernVerbs, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ShellVerbViewModel">
+                                <Border Margin="0,0,0,6" Padding="12" CornerRadius="6" BorderThickness="1"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Grid.Column="0"
+                                                  IsChecked="{x:Bind ShouldInstall, Mode=TwoWay}"
+                                                  VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock Text="{x:Bind Label}" FontWeight="SemiBold"/>
+                                            <TextBlock Text="{x:Bind Description}" Opacity="0.7" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{x:Bind TargetsText}" Opacity="0.5"
+                                                       FontSize="11" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{x:Bind StatusText, Mode=OneWay}"
+                                                   FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource SystemAccentColor}"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Command="{x:Bind ViewModel.ApplyModernChangesCommand}"
+                                Style="{ThemeResource AccentButtonStyle}"
+                                ToolTipService.ToolTip="Registers/unregisters the AppX layout package via PackageManager. Windows Developer Mode must be on.">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <SymbolIcon Symbol="Accept"/>
+                                <TextBlock Text="Apply changes"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{x:Bind ViewModel.RestartExplorerCommand}"
+                                ToolTipService.ToolTip="Restart explorer.exe so the new menu entry appears">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <SymbolIcon Symbol="Refresh"/>
+                                <TextBlock Text="Restart Explorer"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <TextBlock Text="{x:Bind ViewModel.ModernStatus, Mode=OneWay}"
+                               Opacity="0.8" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Row="4" CornerRadius="8" Padding="20" BorderThickness="1"
                     BorderBrush="{ThemeResource ControlElevationBorderBrush}"
                     Background="{ThemeResource SubtleFillColorTransparentBrush}">
                 <StackPanel Spacing="12">
@@ -228,7 +291,7 @@
                 </StackPanel>
             </Border>
 
-            <Border Grid.Row="4" CornerRadius="8" Padding="20" BorderThickness="1"
+            <Border Grid.Row="5" CornerRadius="8" Padding="20" BorderThickness="1"
                     BorderBrush="{ThemeResource ControlElevationBorderBrush}"
                     Background="{ThemeResource SubtleFillColorTransparentBrush}">
                 <StackPanel Spacing="12">
@@ -260,7 +323,7 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock Grid.Row="5" Opacity="0.5" FontSize="12"
+            <TextBlock Grid.Row="6" Opacity="0.5" FontSize="12"
                        Text="Context menu verbs and drop handlers live under HKCU (per-user, no admin). Overlay handlers live under HKLM (admin required). After any change: restart Explorer once."/>
         </Grid>
     </ScrollViewer>

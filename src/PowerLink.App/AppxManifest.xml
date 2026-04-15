@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sparse/layout AppX package declaring PowerLink's Windows 11 modern
+  (top-section) context menu via IExplorerCommand. Registered at runtime
+  with PackageManager.RegisterPackageAsync(DeploymentOptions.DevelopmentMode),
+  which requires Windows Developer Mode but no signing.
+
+  CLSID below must match CLSID_PowerLinkModernMenu in ModernMenuCommand.h.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+  xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
+  IgnorableNamespaces="uap uap10 rescap com desktop4 desktop5">
+
+  <Identity Name="PowerLink.ModernMenu"
+            Publisher="CN=PowerLinkDev"
+            Version="1.0.0.0"
+            ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>PowerLink Modern Menu</DisplayName>
+    <PublisherDisplayName>PowerLink</PublisherDisplayName>
+    <Logo>Assets\icon.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop"
+                        MinVersion="10.0.22000.0"
+                        MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <!--
+      Executable here must be a valid file in the package layout, but since
+      AppListEntry="none" nothing actually activates the package-app. We point
+      at Cli.exe (a console app with simple, side-effect-free startup) instead
+      of App.exe — otherwise Windows sees PowerLink.App.exe as "this is a
+      packaged app" and subsequent spawns from the surrogate fail activation
+      with 0x80070032 (ERROR_NOT_SUPPORTED).
+    -->
+    <Application Id="PowerLinkModernMenu"
+                 Executable="PowerLink.Cli.exe"
+                 EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="PowerLink Modern Menu"
+        Description="Windows 11 modern context menu entries for PowerLink"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\icon.png"
+        Square44x44Logo="Assets\icon.png"
+        AppListEntry="none" />
+
+      <Extensions>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:SurrogateServer DisplayName="PowerLink Modern Menu">
+              <com:Class Id="E8A4F2B1-9D3C-4E7F-B5A8-1F2D3C4E5B6A"
+                         Path="PowerLink.ShellExt.dll"
+                         ThreadingModel="STA" />
+            </com:SurrogateServer>
+          </com:ComServer>
+        </com:Extension>
+
+        <desktop4:Extension Category="windows.fileExplorerContextMenus">
+          <desktop4:FileExplorerContextMenus>
+            <desktop5:ItemType Type="*">
+              <desktop5:Verb Id="PowerLinkModern"
+                             Clsid="E8A4F2B1-9D3C-4E7F-B5A8-1F2D3C4E5B6A" />
+            </desktop5:ItemType>
+            <desktop5:ItemType Type="Directory">
+              <desktop5:Verb Id="PowerLinkModern"
+                             Clsid="E8A4F2B1-9D3C-4E7F-B5A8-1F2D3C4E5B6A" />
+            </desktop5:ItemType>
+          </desktop4:FileExplorerContextMenus>
+        </desktop4:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

@@ -16,6 +16,7 @@ public partial class SettingsViewModel : ObservableObject
     public ObservableCollection<ShellVerbViewModel> Verbs { get; } = new();
     public ObservableCollection<ShellVerbViewModel> OverlayVerbs { get; } = new();
     public ObservableCollection<ShellVerbViewModel> DropVerbs { get; } = new();
+    public ObservableCollection<ShellVerbViewModel> ModernVerbs { get; } = new();
 
     [ObservableProperty] private string _cliPath = string.Empty;
     [ObservableProperty] private string _appPath = string.Empty;
@@ -23,6 +24,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string? _operationStatus;
     [ObservableProperty] private string? _overlayStatus;
     [ObservableProperty] private string? _dropStatus;
+    [ObservableProperty] private string? _modernStatus;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PickedVisibility))]
@@ -41,6 +43,8 @@ public partial class SettingsViewModel : ObservableObject
             OverlayVerbs.Add(new ShellVerbViewModel { Verb = verb });
         foreach (var verb in ShellExtensionService.DropVerbs)
             DropVerbs.Add(new ShellVerbViewModel { Verb = verb });
+        foreach (var verb in ShellExtensionService.ModernMenuVerbs)
+            ModernVerbs.Add(new ShellVerbViewModel { Verb = verb });
         Refresh();
     }
 
@@ -52,6 +56,7 @@ public partial class SettingsViewModel : ObservableObject
         SyncVerbStates(Verbs);
         SyncVerbStates(OverlayVerbs);
         SyncVerbStates(DropVerbs);
+        SyncVerbStates(ModernVerbs);
 
         var picked = PickedSourceStore.TryLoad();
         HasPicked = picked is not null;
@@ -254,12 +259,53 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task ApplyModernChangesAsync()
+    {
+        var install = ModernVerbs.Any(v => v.ShouldInstall && !v.IsInstalled);
+        var uninstall = ModernVerbs.Any(v => !v.ShouldInstall && v.IsInstalled);
+        if (!install && !uninstall)
+        {
+            ModernStatus = "No changes.";
+            return;
+        }
+
+        if (install && !ModernMenuService.IsDeveloperModeEnabled())
+        {
+            ModernStatus = "Developer Mode is off. Enable it in Settings → Privacy & security → For developers, then try again. (Unsigned packages need Developer Mode.)";
+            Refresh();
+            return;
+        }
+
+        try
+        {
+            if (install)
+            {
+                await ModernMenuService.InstallAsync();
+                Refresh();
+                ModernStatus = "Modern menu registered. Restart Explorer and right-click any file/folder to try it.";
+            }
+            else
+            {
+                await ModernMenuService.UninstallAsync();
+                Refresh();
+                ModernStatus = "Modern menu unregistered. Restart Explorer to remove the entry.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ModernStatus = $"Modern menu change failed: {ex.Message}";
+            Refresh();
+        }
+    }
+
+    [RelayCommand]
     private void RestartExplorer()
     {
         ShellExtensionService.RestartExplorer();
         OperationStatus = "Explorer restarted.";
         OverlayStatus = "Explorer restarted.";
         DropStatus = "Explorer restarted.";
+        ModernStatus = "Explorer restarted.";
     }
 
     [RelayCommand]

@@ -1,13 +1,15 @@
 #include "pch.h"
 #include "HardlinkOverlayHandler.h"
 #include "DropHandler.h"
+#include "ModernMenuCommand.h"
 
 namespace
 {
     using FactoryFn = IUnknown* (*)();
 
-    IUnknown* CreateOverlay() { return static_cast<IShellIconOverlayIdentifier*>(new (std::nothrow) HardlinkOverlayHandler()); }
-    IUnknown* CreateDrop()    { return static_cast<IShellExtInit*>(new (std::nothrow) PowerLinkDropHandler()); }
+    IUnknown* CreateOverlay()     { return static_cast<IShellIconOverlayIdentifier*>(new (std::nothrow) HardlinkOverlayHandler()); }
+    IUnknown* CreateDrop()        { return static_cast<IShellExtInit*>(new (std::nothrow) PowerLinkDropHandler()); }
+    IUnknown* CreateModernRoot()  { return static_cast<IExplorerCommand*>(new (std::nothrow) ModernRootCommand()); }
 
     class ClassFactory : public IClassFactory
     {
@@ -84,6 +86,7 @@ STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, void** ppv)
     FactoryFn create = nullptr;
     if (rclsid == CLSID_HardlinkOverlayHandler)      create = CreateOverlay;
     else if (rclsid == CLSID_PowerLinkDropHandler)   create = CreateDrop;
+    else if (rclsid == CLSID_PowerLinkModernMenu)    create = CreateModernRoot;
     else                                             return CLASS_E_CLASSNOTAVAILABLE;
 
     auto* factory = new (std::nothrow) ClassFactory(create);

@@ -1,0 +1,492 @@
+#include "pch.h"
+#include "ModernMenuCommand.h"
+
+namespace
+{
+    struct ActionInfo
+    {
+        PCWSTR title;
+        PCWSTR tooltip;
+        bool   useCli;         // true → PowerLink.Cli.exe, false → PowerLink.App.exe
+        PCWSTR argTemplate;    // printf-style, %s = single quoted path
+        bool   perItem;        // spawn once per selected path (Pick), else once for the first path
+    };
+
+    constexpr ModernAction kAllActions[] = {
+        ModernAction::Pick,
+        ModernAction::Drop,
+        ModernAction::ShowLinks,
+        ModernAction::Inspect,
+        ModernAction::Dedup,
+        ModernAction::Clone,
+    };
+
+    const ActionInfo& Info(ModernAction a)
+    {
+        static const ActionInfo infos[] = {
+            { L"Pick as link source",      L"Remember this path as the source for a later Drop",                true,  L"pick \"%s\"",       true  },
+            { L"Drop as hardlink here",    L"Make a hardlink (file) or a tree of hardlinks (folder) from the picked source", true,  L"drop \"%s\"",      false },
+            { L"Show hardlinks",           L"List every path on this volume sharing this file's data",          true,  L"show-links \"%s\"", false },
+            { L"Inspect for hardlinks",    L"Open the Inspector with this folder",                              false, L"--inspect \"%s\"",  false },
+            { L"Deduplicate folder",       L"Open the Deduplicate page with this folder added",                 false, L"--dedup \"%s\"",    false },
+            { L"Clone folder (hardlinks)", L"Mirror folder tree as hardlinks — same volume only",               false, L"--clone \"%s\"",    false },
+        };
+        return infos[static_cast<size_t>(a)];
+    }
+
+    HRESULT AllocString(PCWSTR src, LPWSTR* out)
+    {
+        if (out == nullptr) return E_POINTER;
+        *out = nullptr;
+        return SHStrDupW(src, out);
+    }
+
+    std::wstring DllDir()
+    {
+        WCHAR path[MAX_PATH]{};
+        if (GetModuleFileNameW(g_hModule, path, MAX_PATH) == 0) return L"";
+        WCHAR* sep = nullptr;
+        for (WCHAR* p = path; *p; ++p)
+            if (*p == L'\\' || *p == L'/') sep = p;
+        if (sep == nullptr) return L"";
+        *(sep + 1) = L'\0';
+        return path;
+    }
+
+    bool SelectionPaths(IShellItemArray* arr, std::vector<std::wstring>& out)
+    {
+        if (arr == nullptr) return false;
+        DWORD count = 0;
+        if (FAILED(arr->GetCount(&count)) || count == 0) return false;
+
+        for (DWORD i = 0; i < count; ++i)
+        {
+            IShellItem* item = nullptr;
+            if (FAILED(arr->GetItemAt(i, &item)) || item == nullptr) continue;
+            LPWSTR p = nullptr;
+            if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &p)) && p != nullptr)
+            {
+                out.emplace_back(p);
+                CoTaskMemFree(p);
+            }
+            item->Release();
+        }
+        return !out.empty();
+    }
+
+    // Append a line to %TEMP%\powerlink-menu.log. Only active in debug diagnostics —
+    // lets us confirm whether the shell is reaching Invoke at all and what happened
+    // to the child-process spawn inside the AppX surrogate.
+    void DebugLog(const std::wstring& msg)
+    {
+        WCHAR temp[MAX_PATH]{};
+        if (GetTempPathW(MAX_PATH, temp) == 0) return;
+        const std::wstring path = std::wstring(temp) + L"powerlink-menu.log";
+        HANDLE h = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                               nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h == INVALID_HANDLE_VALUE) return;
+        SetFilePointer(h, 0, nullptr, FILE_END);
+
+        SYSTEMTIME st{};
+        GetLocalTime(&st);
+        WCHAR prefix[64]{};
+        StringCchPrintfW(prefix, ARRAYSIZE(prefix), L"[%02d:%02d:%02d.%03d] ",
+                         st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+
+        const std::wstring line = std::wstring(prefix) + msg + L"\r\n";
+        // UTF-8 convert for readability in Notepad.
+        const int cb = WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.size(),
+                                           nullptr, 0, nullptr, nullptr);
+        std::vector<char> utf8((size_t)cb);
+        WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.size(), utf8.data(), cb, nullptr, nullptr);
+        DWORD written = 0;
+        WriteFile(h, utf8.data(), (DWORD)utf8.size(), &written, nullptr);
+        CloseHandle(h);
+    }
+
+    // Our DLL is hosted in dllhost.exe with our AppX package identity (via
+    // com:SurrogateServer in the manifest). Any child spawned with a plain
+    // CreateProcessW inherits that identity — fine for our console Cli, fatal
+    // for PowerLink.App.exe (unpackaged WinUI) because the activation path for
+    // a packaged WinUI app is wildly different and the process silently exits.
+    //
+    // PROC_THREAD_ATTRIBUTE_DESKTOP_APP_POLICY = DESKTOP_APP_BREAKAWAY tells
+    // Windows to strip package identity from the child and its entire tree,
+    // producing a normal desktop process. This is Microsoft's documented fix
+    // for "unpackaged app spawned from packaged host".
+    bool LaunchExe(const std::wstring& exe, const std::wstring& args, const std::wstring& workDir)
+    {
+        // Spawn the target through cmd.exe /c start — this severs the MSIX
+        // activation tracker's association between our package folder and
+        // child process creation. A direct CreateProcessW on PowerLink.App.exe
+        // exits with 0x80070032 because Windows detects the exe sits inside a
+        // registered package layout and tries packaged activation (which fails
+        // since the manifest doesn't declare App.exe as the package's Application).
+        // `start ""` = empty window title (otherwise start consumes the first
+        // quoted arg as a title), /b = no new console window.
+        WCHAR systemDir[MAX_PATH]{};
+        GetSystemDirectoryW(systemDir, MAX_PATH);
+        std::wstring cmdExe = std::wstring(systemDir) + L"\\cmd.exe";
+
+        std::wstring cmdline = L"cmd.exe /c start \"\" /b \"" + exe + L"\" " + args;
+        std::vector<wchar_t> cmdBuf(cmdline.begin(), cmdline.end());
+        cmdBuf.push_back(L'\0');
+
+        SIZE_T attrSize = 0;
+        InitializeProcThreadAttributeList(nullptr, 1, 0, &attrSize);
+        std::vector<BYTE> attrBuf(attrSize);
+        auto* attrs = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attrBuf.data());
+
+        bool attrsReady = false;
+        DWORD policy = PROCESS_CREATION_DESKTOP_APP_BREAKAWAY_ENABLE_PROCESS_TREE;
+        if (InitializeProcThreadAttributeList(attrs, 1, 0, &attrSize) &&
+            UpdateProcThreadAttribute(attrs, 0, PROC_THREAD_ATTRIBUTE_DESKTOP_APP_POLICY,
+                                      &policy, sizeof(policy), nullptr, nullptr))
+        {
+            attrsReady = true;
+        }
+
+        STARTUPINFOEXW siex{};
+        siex.StartupInfo.cb = sizeof(siex);
+        if (attrsReady) siex.lpAttributeList = attrs;
+
+        DWORD flags = CREATE_NO_WINDOW;
+        if (attrsReady) flags |= EXTENDED_STARTUPINFO_PRESENT;
+
+        PROCESS_INFORMATION pi{};
+        const BOOL ok = CreateProcessW(
+            cmdExe.c_str(), cmdBuf.data(), nullptr, nullptr, FALSE,
+            flags, nullptr,
+            workDir.empty() ? nullptr : workDir.c_str(),
+            reinterpret_cast<LPSTARTUPINFOW>(&siex), &pi);
+
+        if (attrsReady) DeleteProcThreadAttributeList(attrs);
+
+        if (!ok)
+        {
+            WCHAR b[256]{};
+            StringCchPrintfW(b, ARRAYSIZE(b),
+                L"CreateProcessW FAILED: exe=%s err=%lu", exe.c_str(), GetLastError());
+            DebugLog(b);
+            return false;
+        }
+
+        // Quick liveness check — if the child already exited by now, it crashed
+        // or self-aborted during startup (WinUI activation, package-identity
+        // confusion, missing runtime). Exit code tells us which.
+        WaitForSingleObject(pi.hProcess, 500);
+        DWORD exitCode = STILL_ACTIVE;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        WCHAR b[256]{};
+        if (exitCode == STILL_ACTIVE)
+            StringCchPrintfW(b, ARRAYSIZE(b), L"  spawn OK pid=%lu, alive at 500ms", pi.dwProcessId);
+        else
+            StringCchPrintfW(b, ARRAYSIZE(b), L"  spawn OK pid=%lu, exited code=0x%08lX",
+                             pi.dwProcessId, exitCode);
+        DebugLog(b);
+
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        return true;
+    }
+
+    std::wstring FormatArgs(PCWSTR tmpl, PCWSTR path)
+    {
+        WCHAR buf[MAX_PATH + 64]{};
+        StringCchPrintfW(buf, ARRAYSIZE(buf), tmpl, path);
+        return buf;
+    }
+
+    // Shared icon for the root + every sub-command. Lives next to the DLL
+    // (Assets\Icon.ico is copied there by the App build). Returning it via
+    // GetIcon instead of E_NOTIMPL fills in the blank menu slot.
+    HRESULT AllocIconPath(LPWSTR* out)
+    {
+        if (out == nullptr) return E_POINTER;
+        *out = nullptr;
+        const std::wstring dir = DllDir();
+        if (dir.empty()) return E_FAIL;
+        const std::wstring ico = dir + L"Assets\\Icon.ico";
+        if (GetFileAttributesW(ico.c_str()) == INVALID_FILE_ATTRIBUTES) return E_FAIL;
+        return SHStrDupW(ico.c_str(), out);
+    }
+}
+
+// ================= ModernSubCommand =================
+
+ModernSubCommand::ModernSubCommand(ModernAction action) : _refCount(1), _action(action)
+{
+    g_dllRefCount.fetch_add(1, std::memory_order_relaxed);
+}
+
+IFACEMETHODIMP ModernSubCommand::QueryInterface(REFIID riid, void** ppv)
+{
+    if (ppv == nullptr) return E_POINTER;
+    *ppv = nullptr;
+    if (riid == IID_IUnknown || riid == IID_IExplorerCommand)
+        *ppv = static_cast<IExplorerCommand*>(this);
+    else
+        return E_NOINTERFACE;
+    AddRef();
+    return S_OK;
+}
+
+IFACEMETHODIMP_(ULONG) ModernSubCommand::AddRef()
+{
+    return _refCount.fetch_add(1, std::memory_order_relaxed) + 1;
+}
+
+IFACEMETHODIMP_(ULONG) ModernSubCommand::Release()
+{
+    const ULONG r = _refCount.fetch_sub(1, std::memory_order_acq_rel) - 1;
+    if (r == 0)
+    {
+        g_dllRefCount.fetch_sub(1, std::memory_order_relaxed);
+        delete this;
+    }
+    return r;
+}
+
+IFACEMETHODIMP ModernSubCommand::GetTitle(IShellItemArray*, LPWSTR* ppszName)
+{
+    return AllocString(Info(_action).title, ppszName);
+}
+
+IFACEMETHODIMP ModernSubCommand::GetIcon(IShellItemArray*, LPWSTR* ppszIcon)
+{
+    return AllocIconPath(ppszIcon);
+}
+
+IFACEMETHODIMP ModernSubCommand::GetToolTip(IShellItemArray*, LPWSTR* ppszInfotip)
+{
+    return AllocString(Info(_action).tooltip, ppszInfotip);
+}
+
+IFACEMETHODIMP ModernSubCommand::GetCanonicalName(GUID* pguidCommandName)
+{
+    if (pguidCommandName == nullptr) return E_POINTER;
+    *pguidCommandName = GUID_NULL;
+    return S_OK;
+}
+
+IFACEMETHODIMP ModernSubCommand::GetState(IShellItemArray*, BOOL, EXPCMDSTATE* pCmdState)
+{
+    if (pCmdState == nullptr) return E_POINTER;
+    *pCmdState = ECS_ENABLED;
+    return S_OK;
+}
+
+IFACEMETHODIMP ModernSubCommand::Invoke(IShellItemArray* items, IBindCtx*)
+{
+    const ActionInfo& info = Info(_action);
+
+    std::vector<std::wstring> paths;
+    const bool gotPaths = SelectionPaths(items, paths);
+
+    {
+        WCHAR hdr[256]{};
+        StringCchPrintfW(hdr, ARRAYSIZE(hdr), L"Invoke action=%s itemsPtr=%p paths=%zu",
+                         info.title, items, paths.size());
+        DebugLog(hdr);
+        for (const auto& p : paths) DebugLog(L"  path: " + p);
+    }
+
+    if (!gotPaths)
+    {
+        DebugLog(L"  -> no paths, returning S_OK");
+        return S_OK;
+    }
+
+    const std::wstring dir = DllDir();
+    if (dir.empty()) { DebugLog(L"  -> DllDir empty, E_FAIL"); return E_FAIL; }
+
+    const std::wstring exe = dir + (info.useCli ? L"PowerLink.Cli.exe" : L"PowerLink.App.exe");
+    if (GetFileAttributesW(exe.c_str()) == INVALID_FILE_ATTRIBUTES)
+    {
+        DebugLog(L"  -> exe missing: " + exe);
+        return E_FAIL;
+    }
+
+    DebugLog(L"  spawn: " + exe);
+    if (info.perItem)
+    {
+        for (const auto& p : paths)
+            LaunchExe(exe, FormatArgs(info.argTemplate, p.c_str()), dir);
+    }
+    else
+    {
+        LaunchExe(exe, FormatArgs(info.argTemplate, paths.front().c_str()), dir);
+    }
+    return S_OK;
+}
+
+IFACEMETHODIMP ModernSubCommand::GetFlags(EXPCMDFLAGS* pFlags)
+{
+    if (pFlags == nullptr) return E_POINTER;
+    *pFlags = ECF_DEFAULT;
+    return S_OK;
+}
+
+IFACEMETHODIMP ModernSubCommand::EnumSubCommands(IEnumExplorerCommand** ppEnum)
+{
+    if (ppEnum == nullptr) return E_POINTER;
+    *ppEnum = nullptr;
+    return E_NOTIMPL;
+}
+
+// ================= ModernSubCommandEnum =================
+
+ModernSubCommandEnum::ModernSubCommandEnum() : _refCount(1), _index(0)
+{
+    g_dllRefCount.fetch_add(1, std::memory_order_relaxed);
+}
+
+IFACEMETHODIMP ModernSubCommandEnum::QueryInterface(REFIID riid, void** ppv)
+{
+    if (ppv == nullptr) return E_POINTER;
+    *ppv = nullptr;
+    if (riid == IID_IUnknown || riid == IID_IEnumExplorerCommand)
+        *ppv = static_cast<IEnumExplorerCommand*>(this);
+    else
+        return E_NOINTERFACE;
+    AddRef();
+    return S_OK;
+}
+
+IFACEMETHODIMP_(ULONG) ModernSubCommandEnum::AddRef()
+{
+    return _refCount.fetch_add(1, std::memory_order_relaxed) + 1;
+}
+
+IFACEMETHODIMP_(ULONG) ModernSubCommandEnum::Release()
+{
+    const ULONG r = _refCount.fetch_sub(1, std::memory_order_acq_rel) - 1;
+    if (r == 0)
+    {
+        g_dllRefCount.fetch_sub(1, std::memory_order_relaxed);
+        delete this;
+    }
+    return r;
+}
+
+IFACEMETHODIMP ModernSubCommandEnum::Next(ULONG celt, IExplorerCommand** rgelt, ULONG* pceltFetched)
+{
+    if (rgelt == nullptr) return E_POINTER;
+    constexpr size_t total = ARRAYSIZE(kAllActions);
+    ULONG fetched = 0;
+    for (ULONG i = 0; i < celt && _index < total; ++i, ++_index)
+    {
+        auto* sub = new (std::nothrow) ModernSubCommand(kAllActions[_index]);
+        if (sub == nullptr) break;
+        rgelt[fetched++] = static_cast<IExplorerCommand*>(sub);
+    }
+    if (pceltFetched) *pceltFetched = fetched;
+    return (fetched == celt) ? S_OK : S_FALSE;
+}
+
+IFACEMETHODIMP ModernSubCommandEnum::Skip(ULONG celt)
+{
+    _index += celt;
+    return S_OK;
+}
+
+IFACEMETHODIMP ModernSubCommandEnum::Reset()
+{
+    _index = 0;
+    return S_OK;
+}
+
+IFACEMETHODIMP ModernSubCommandEnum::Clone(IEnumExplorerCommand** ppenum)
+{
+    if (ppenum == nullptr) return E_POINTER;
+    *ppenum = nullptr;
+    return E_NOTIMPL;
+}
+
+// ================= ModernRootCommand =================
+
+ModernRootCommand::ModernRootCommand() : _refCount(1)
+{
+    g_dllRefCount.fetch_add(1, std::memory_order_relaxed);
+}
+
+IFACEMETHODIMP ModernRootCommand::QueryInterface(REFIID riid, void** ppv)
+{
+    if (ppv == nullptr) return E_POINTER;
+    *ppv = nullptr;
+    if (riid == IID_IUnknown || riid == IID_IExplorerCommand)
+        *ppv = static_cast<IExplorerCommand*>(this);
+    else
+        return E_NOINTERFACE;
+    AddRef();
+    return S_OK;
+}
+
+IFACEMETHODIMP_(ULONG) ModernRootCommand::AddRef()
+{
+    return _refCount.fetch_add(1, std::memory_order_relaxed) + 1;
+}
+
+IFACEMETHODIMP_(ULONG) ModernRootCommand::Release()
+{
+    const ULONG r = _refCount.fetch_sub(1, std::memory_order_acq_rel) - 1;
+    if (r == 0)
+    {
+        g_dllRefCount.fetch_sub(1, std::memory_order_relaxed);
+        delete this;
+    }
+    return r;
+}
+
+IFACEMETHODIMP ModernRootCommand::GetTitle(IShellItemArray*, LPWSTR* ppszName)
+{
+    return AllocString(L"PowerLink", ppszName);
+}
+
+IFACEMETHODIMP ModernRootCommand::GetIcon(IShellItemArray*, LPWSTR* ppszIcon)
+{
+    return AllocIconPath(ppszIcon);
+}
+
+IFACEMETHODIMP ModernRootCommand::GetToolTip(IShellItemArray*, LPWSTR* ppszInfotip)
+{
+    if (ppszInfotip == nullptr) return E_POINTER;
+    *ppszInfotip = nullptr;
+    return E_NOTIMPL;
+}
+
+IFACEMETHODIMP ModernRootCommand::GetCanonicalName(GUID* pguidCommandName)
+{
+    if (pguidCommandName == nullptr) return E_POINTER;
+    *pguidCommandName = GUID_NULL;
+    return S_OK;
+}
+
+IFACEMETHODIMP ModernRootCommand::GetState(IShellItemArray*, BOOL, EXPCMDSTATE* pCmdState)
+{
+    if (pCmdState == nullptr) return E_POINTER;
+    *pCmdState = ECS_ENABLED;
+    return S_OK;
+}
+
+IFACEMETHODIMP ModernRootCommand::Invoke(IShellItemArray*, IBindCtx*)
+{
+    // Container command — the shell opens the submenu without invoking us.
+    return S_OK;
+}
+
+IFACEMETHODIMP ModernRootCommand::GetFlags(EXPCMDFLAGS* pFlags)
+{
+    if (pFlags == nullptr) return E_POINTER;
+    *pFlags = ECF_HASSUBCOMMANDS;
+    return S_OK;
+}
+
+IFACEMETHODIMP ModernRootCommand::EnumSubCommands(IEnumExplorerCommand** ppEnum)
+{
+    if (ppEnum == nullptr) return E_POINTER;
+    auto* e = new (std::nothrow) ModernSubCommandEnum();
+    if (e == nullptr) { *ppEnum = nullptr; return E_OUTOFMEMORY; }
+    *ppEnum = static_cast<IEnumExplorerCommand*>(e);
+    return S_OK;
+}

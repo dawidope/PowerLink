@@ -5,7 +5,7 @@ namespace PowerLink.App.Services;
 
 public enum ShellVerbTarget { Cli, App }
 
-public enum ShellVerbKind { ContextMenu, OverlayHandler, DropHandler }
+public enum ShellVerbKind { ContextMenu, OverlayHandler, DropHandler, ModernMenu }
 
 public sealed record ShellVerbKey(string RelativeKeyPath, string CommandArgs);
 
@@ -149,12 +149,29 @@ public static class ShellExtensionService
         },
     };
 
+    public static IReadOnlyList<ShellVerb> ModernMenuVerbs { get; } = new[]
+    {
+        new ShellVerb
+        {
+            Id = "PowerLinkModernMenu",
+            Label = "Windows 11 modern menu (experimental)",
+            Description = "Adds a PowerLink submenu to the top section of Win11 file/folder right-click menu — no 'Show more options' needed. Registers a sparse MSIX package; requires Windows Developer Mode.",
+            TargetsText = "Right-click any file or folder",
+            Executable = ShellVerbTarget.App,
+            Keys = Array.Empty<ShellVerbKey>(),
+            Kind = ShellVerbKind.ModernMenu,
+            RequiresElevation = false,
+        },
+    };
+
     public static bool IsInstalled(ShellVerb verb)
     {
         if (verb.Kind == ShellVerbKind.OverlayHandler)
             return IsOverlayInstalled();
         if (verb.Kind == ShellVerbKind.DropHandler)
             return IsDropHandlerInstalled();
+        if (verb.Kind == ShellVerbKind.ModernMenu)
+            return ModernMenuService.IsInstalled();
 
         foreach (var key in verb.Keys)
         {
