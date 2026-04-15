@@ -57,30 +57,32 @@ menu.
 
 ---
 
-## Show hardlinks of this file
+## Single-instance App activation for shell verbs
 
-**Goal:** right-click any file in Explorer → "PowerLink: Show hardlinks"
-→ opens PowerLink.App on a dedicated Hardlinks page listing every path
-that shares the file's data (ref count, file index, size).
+**Goal:** clicking a shell verb (e.g. "PowerLink: Deduplicate folder")
+while PowerLink.App is already running should focus the existing
+window and route the preset into it, instead of spawning a second
+process.
 
 **Approach:**
-1. `PowerLink.Core/Native/Win32Hardlink.cs` — add
-   `EnumerateHardLinks(string path)` using `FindFirstFileNameW` +
-   `FindNextFileNameW`. They return paths without a drive — prepend
-   `Path.GetPathRoot(path).TrimEnd('\\')` to each.
-2. New `src/PowerLink.App/Pages/HardlinksPage.xaml` with a picker +
-   list + "Copy all paths" / "Open in Explorer".
-3. `App.xaml.cs` — parse command line in `OnLaunched`; if
-   `--show-links <path>`, after `MainWindow.Activate()` navigate to
-   HardlinksPage and set `ViewModel.FilePath`.
-4. `ShellExtensionService.Install` — add a fourth verb
-   `HKCU\Software\Classes\*\shell\PowerLinkShowLinks` with command
-   `"PowerLink.App.exe" --show-links "%1"`.
-5. CLI: `powerlink links <path>` — prints each path on its own line
-   (one-shot, for scripting).
+1. `App.xaml.cs` `OnLaunched` — before creating `MainWindow`, call
+   `Microsoft.Windows.AppLifecycle.AppInstance.FindOrRegisterForKey("PowerLink.App")`.
+   If the returned instance is not the current one, invoke
+   `RedirectActivationToAsync(args)` and `Application.Exit()`.
+2. The primary instance subscribes to `AppInstance.Activated` and, on
+   redirected activation, re-parses the args into a new `LaunchPreset`
+   and navigates `ContentFrame` with the new path — dispatched to the
+   UI thread via `DispatcherQueue`.
+3. `MainWindow.xaml.cs` gains `ApplyPreset(LaunchPreset)` that does
+   the same NavView-sync + Frame.Navigate as the initial path does
+   today.
 
-**Tests:** create two hardlinks to the same file in a TempDirectory,
-assert `EnumerateHardLinks` returns both full paths.
+**Pitfalls:**
+- `AppLifecycle.AppInstance` requires `Microsoft.Windows.SDK.BuildTools`
+  + `Microsoft.WindowsAppSDK` package (already referenced). No extra
+  packages needed.
+- Second-instance exit must happen before `InitializeComponent` runs
+  on `Application`, otherwise the XAML runtime initializes twice.
 
 ---
 

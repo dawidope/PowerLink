@@ -24,27 +24,51 @@
                 <StackPanel Spacing="12">
                     <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Explorer context menu"/>
                     <TextBlock TextWrapping="Wrap" Opacity="0.75"
-                               Text="Adds 'PowerLink: Pick as link source' on files/folders and 'PowerLink: Drop as hardlink here' inside folders. Per-user, no admin required."/>
+                               Text="Choose which PowerLink entries to add to the right-click menu. Per-user registry, no admin required. On Windows 11 these appear under 'Show more options'."/>
+
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.Verbs, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ShellVerbViewModel">
+                                <Border Margin="0,0,0,6" Padding="12" CornerRadius="6" BorderThickness="1"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Grid.Column="0"
+                                                  IsChecked="{x:Bind ShouldInstall, Mode=TwoWay}"
+                                                  VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock Text="{x:Bind Label}" FontWeight="SemiBold"/>
+                                            <TextBlock Text="{x:Bind Description}" Opacity="0.7" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{x:Bind TargetsText}" Opacity="0.5"
+                                                       FontSize="11" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{x:Bind StatusText, Mode=OneWay}"
+                                                   FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource SystemAccentColor}"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <TextBlock Text="Status:" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                        <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
-                                   VerticalAlignment="Center"
-                                   Foreground="{ThemeResource SystemAccentColor}"/>
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Button Command="{x:Bind ViewModel.InstallCommand}"
+                        <Button Command="{x:Bind ViewModel.ApplyChangesCommand}"
                                 Style="{ThemeResource AccentButtonStyle}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <SymbolIcon Symbol="Add"/>
-                                <TextBlock Text="Install"/>
+                                <SymbolIcon Symbol="Accept"/>
+                                <TextBlock Text="Apply changes"/>
                             </StackPanel>
                         </Button>
-                        <Button Command="{x:Bind ViewModel.UninstallCommand}">
+                        <Button Command="{x:Bind ViewModel.UninstallAllCommand}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <SymbolIcon Symbol="Delete"/>
-                                <TextBlock Text="Uninstall"/>
+                                <TextBlock Text="Uninstall all"/>
                             </StackPanel>
                         </Button>
                         <Button Command="{x:Bind ViewModel.RestartExplorerCommand}"
@@ -56,11 +80,18 @@
                         </Button>
                     </StackPanel>
 
+                    <TextBlock Text="{x:Bind ViewModel.OperationStatus, Mode=OneWay}"
+                               Opacity="0.8" TextWrapping="Wrap"/>
+
                     <StackPanel Spacing="2" Margin="0,4,0,0">
-                        <TextBlock Text="CLI path detected:" FontWeight="SemiBold" Opacity="0.7"/>
+                        <TextBlock Text="CLI path:" FontWeight="SemiBold" Opacity="0.7"/>
                         <TextBlock Text="{x:Bind ViewModel.CliPath, Mode=OneWay}"
                                    FontFamily="Consolas" Opacity="0.7"
-                                   TextWrapping="Wrap"/>
+                                   TextWrapping="Wrap" FontSize="11"/>
+                        <TextBlock Text="App path:" FontWeight="SemiBold" Opacity="0.7" Margin="0,4,0,0"/>
+                        <TextBlock Text="{x:Bind ViewModel.AppPath, Mode=OneWay}"
+                                   FontFamily="Consolas" Opacity="0.7"
+                                   TextWrapping="Wrap" FontSize="11"/>
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -98,7 +129,7 @@
             </Border>
 
             <TextBlock Grid.Row="3" Opacity="0.5" FontSize="12"
-                       Text="PowerLink — registry-based context menu (Phase 2). After installing, restart Explorer once."/>
+                       Text="Registry-based verbs under HKCU\Software\Classes. After changes: restart Explorer once."/>
         </Grid>
     </ScrollViewer>
 </Page>

@@ -15,8 +15,43 @@ public sealed partial class MainWindow : Window
         Title = "PowerLink";
         SetWindowIcon();
         SetMicaBackdrop();
-        ContentFrame.Navigate(typeof(DedupPage));
+        NavigateInitialPage();
     }
+
+    private void NavigateInitialPage()
+    {
+        var preset = App.Preset;
+        if (preset is null)
+        {
+            ContentFrame.Navigate(typeof(DedupPage));
+            return;
+        }
+
+        var (pageType, navTag) = preset.Mode switch
+        {
+            LaunchMode.Dedup => (typeof(DedupPage), "dedup"),
+            LaunchMode.Inspect => (typeof(InspectorPage), "inspector"),
+            LaunchMode.Clone => (typeof(ClonePage), "clone"),
+            _ => (typeof(DedupPage), "dedup"),
+        };
+
+        // Sync NavView selection so the sidebar highlights the chosen page.
+        // SuppressNavigate used to avoid double-navigation from SelectionChanged.
+        foreach (var item in Nav.MenuItems.OfType<NavigationViewItem>())
+        {
+            if (item.Tag as string == navTag)
+            {
+                _suppressNavigate = true;
+                Nav.SelectedItem = item;
+                _suppressNavigate = false;
+                break;
+            }
+        }
+
+        ContentFrame.Navigate(pageType, preset.Path);
+    }
+
+    private bool _suppressNavigate;
 
     private void SetMicaBackdrop()
     {
@@ -45,6 +80,7 @@ public sealed partial class MainWindow : Window
 
     private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
+        if (_suppressNavigate) return;
         if (args.SelectedItem is not NavigationViewItem item || item.Tag is not string tag) return;
 
         Type? target = tag switch

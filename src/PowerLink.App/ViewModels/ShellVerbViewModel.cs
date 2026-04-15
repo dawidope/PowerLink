@@ -1,0 +1,23 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+using PowerLink.App.Services;
+
+namespace PowerLink.App.ViewModels;
+
+public partial class ShellVerbViewModel : ObservableObject
+{
+    public required ShellVerb Verb { get; init; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusText))]
+    private bool _isInstalled;
+
+    // What the checkbox is currently bound to. Equals IsInstalled after
+    // Refresh(); Apply() reconciles registry state to this value.
+    [ObservableProperty]
+    private bool _shouldInstall;
+
+    public string Label => Verb.Label;
+    public string Description => Verb.Description;
+    public string TargetsText => Verb.TargetsText;
+    public string StatusText => IsInstalled ? "Installed" : "Not installed";
+}

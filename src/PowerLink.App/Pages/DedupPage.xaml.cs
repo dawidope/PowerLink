@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Navigation;
 using PowerLink.App.ViewModels;
 
 namespace PowerLink.App.Pages;
@@ -11,6 +12,17 @@ public sealed partial class DedupPage : Page
     public DedupPage()
     {
         InitializeComponent();
+    }
+
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        if (e.Parameter is string path
+            && Directory.Exists(path)
+            && !ViewModel.Paths.Contains(path))
+        {
+            ViewModel.Paths.Add(path);
+        }
     }
 
     private void OnScanAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)

@@ -3,50 +3,142 @@ using Microsoft.Win32;
 
 namespace PowerLink.App.Services;
 
+public enum ShellVerbTarget { Cli, App }
+
+public sealed record ShellVerbKey(string RelativeKeyPath, string CommandArgs);
+
+public sealed record ShellVerb
+{
+    public required string Id { get; init; }
+    public required string Label { get; init; }
+    public required string Description { get; init; }
+    public required string TargetsText { get; init; }
+    public required ShellVerbTarget Executable { get; init; }
+    public required IReadOnlyList<ShellVerbKey> Keys { get; init; }
+}
+
 public static class ShellExtensionService
 {
-    private const string PickKeyName = "PowerLinkPick";
-    private const string DropKeyName = "PowerLinkDrop";
-    private const string PickLabel = "PowerLink: Pick as link source";
-    private const string DropLabel = "PowerLink: Drop as hardlink here";
-
     // All registrations live under HKCU so no admin elevation is needed.
     private const string ClassesRoot = @"Software\Classes";
 
-    public static bool IsInstalled()
+    public static IReadOnlyList<ShellVerb> AllVerbs { get; } = new[]
     {
-        using var pickAny    = OpenSubKey($@"{ClassesRoot}\*\shell\{PickKeyName}");
-        using var pickFolder = OpenSubKey($@"{ClassesRoot}\Folder\shell\{PickKeyName}");
-        using var dropFolder = OpenSubKey($@"{ClassesRoot}\Folder\shell\{DropKeyName}");
-        using var dropBg     = OpenSubKey($@"{ClassesRoot}\Directory\Background\shell\{DropKeyName}");
-        return pickAny is not null && pickFolder is not null
-            && dropFolder is not null && dropBg is not null;
+        new ShellVerb
+        {
+            Id = "PowerLinkPick",
+            Label = "PowerLink: Pick as link source",
+            Description = "Remember this file or folder as the source for a later 'Drop as hardlink here'.",
+            TargetsText = "Files, folders",
+            Executable = ShellVerbTarget.Cli,
+            Keys = new[]
+            {
+                new ShellVerbKey(@"*\shell\PowerLinkPick", "pick \"%1\""),
+                new ShellVerbKey(@"Folder\shell\PowerLinkPick", "pick \"%1\""),
+            },
+        },
+        new ShellVerb
+        {
+            Id = "PowerLinkDrop",
+            Label = "PowerLink: Drop as hardlink here",
+            Description = "Create a hardlink (for files) or a cloned tree (for folders) from the previously picked source.",
+            TargetsText = "Folders, folder background",
+            Executable = ShellVerbTarget.Cli,
+            Keys = new[]
+            {
+                new ShellVerbKey(@"Folder\shell\PowerLinkDrop", "drop \"%1\""),
+                new ShellVerbKey(@"Directory\Background\shell\PowerLinkDrop", "drop \"%V\""),
+            },
+        },
+        new ShellVerb
+        {
+            Id = "PowerLinkShowLinks",
+            Label = "PowerLink: Show hardlinks",
+            Description = "List every path that shares this file's data on disk — quick dialog, no scan.",
+            TargetsText = "Files",
+            Executable = ShellVerbTarget.Cli,
+            Keys = new[]
+            {
+                new ShellVerbKey(@"*\shell\PowerLinkShowLinks", "show-links \"%1\""),
+            },
+        },
+        new ShellVerb
+        {
+            Id = "PowerLinkInspect",
+            Label = "PowerLink: Inspect for hardlinks",
+            Description = "Open PowerLink's Inspector with this folder — finds files inside that are already hardlinked.",
+            TargetsText = "Folders, folder background",
+            Executable = ShellVerbTarget.App,
+            Keys = new[]
+            {
+                new ShellVerbKey(@"Folder\shell\PowerLinkInspect", "--inspect \"%1\""),
+                new ShellVerbKey(@"Directory\Background\shell\PowerLinkInspect", "--inspect \"%V\""),
+            },
+        },
+        new ShellVerb
+        {
+            Id = "PowerLinkDedup",
+            Label = "PowerLink: Deduplicate folder",
+            Description = "Open PowerLink's Deduplicate page with this folder added to the scan list.",
+            TargetsText = "Folders, folder background",
+            Executable = ShellVerbTarget.App,
+            Keys = new[]
+            {
+                new ShellVerbKey(@"Folder\shell\PowerLinkDedup", "--dedup \"%1\""),
+                new ShellVerbKey(@"Directory\Background\shell\PowerLinkDedup", "--dedup \"%V\""),
+            },
+        },
+        new ShellVerb
+        {
+            Id = "PowerLinkClone",
+            Label = "PowerLink: Clone folder (hardlinks)",
+            Description = "Open PowerLink's Clone page with this folder pre-filled as the source.",
+            TargetsText = "Folders",
+            Executable = ShellVerbTarget.App,
+            Keys = new[]
+            {
+                new ShellVerbKey(@"Folder\shell\PowerLinkClone", "--clone \"%1\""),
+            },
+        },
+    };
+
+    public static bool IsInstalled(ShellVerb verb)
+    {
+        foreach (var key in verb.Keys)
+        {
+            using var k = OpenSubKey($@"{ClassesRoot}\{key.RelativeKeyPath}");
+            if (k is null) return false;
+        }
+        return true;
     }
 
-    public static void Install(string cliExePath, string iconSourcePath)
+    public static bool IsAnyInstalled() => AllVerbs.Any(IsInstalled);
+
+    public static void Install(ShellVerb verb, string cliPath, string appPath, string iconPath)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(cliExePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(cliPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(appPath);
 
-        var pickCmd = $"\"{cliExePath}\" pick \"%1\"";
-        var dropCmdSelected = $"\"{cliExePath}\" drop \"%1\"";
-        var dropCmdBackground = $"\"{cliExePath}\" drop \"%V\"";
-        var icon = string.IsNullOrWhiteSpace(iconSourcePath) ? null : $"\"{iconSourcePath}\",0";
+        var exe = verb.Executable == ShellVerbTarget.Cli ? cliPath : appPath;
+        var icon = string.IsNullOrWhiteSpace(iconPath) ? null : $"\"{iconPath}\",0";
 
-        // PICK — on any file or any folder
-        WriteVerb($@"{ClassesRoot}\*\shell\{PickKeyName}", PickLabel, icon, pickCmd);
-        WriteVerb($@"{ClassesRoot}\Folder\shell\{PickKeyName}", PickLabel, icon, pickCmd);
-
-        // DROP — on a folder (hardlink lands inside it) or in a folder background
-        WriteVerb($@"{ClassesRoot}\Folder\shell\{DropKeyName}", DropLabel, icon, dropCmdSelected);
-        WriteVerb($@"{ClassesRoot}\Directory\Background\shell\{DropKeyName}", DropLabel, icon, dropCmdBackground);
+        foreach (var key in verb.Keys)
+        {
+            var command = $"\"{exe}\" {key.CommandArgs}";
+            WriteVerb($@"{ClassesRoot}\{key.RelativeKeyPath}", verb.Label, icon, command);
+        }
     }
 
-    public static void Uninstall()
+    public static void Uninstall(ShellVerb verb)
     {
-        DeleteSubKeyTree($@"{ClassesRoot}\*\shell\{PickKeyName}");
-        DeleteSubKeyTree($@"{ClassesRoot}\Folder\shell\{PickKeyName}");
-        DeleteSubKeyTree($@"{ClassesRoot}\Folder\shell\{DropKeyName}");
-        DeleteSubKeyTree($@"{ClassesRoot}\Directory\Background\shell\{DropKeyName}");
+        foreach (var key in verb.Keys)
+            DeleteSubKeyTree($@"{ClassesRoot}\{key.RelativeKeyPath}");
+    }
+
+    public static void UninstallAll()
+    {
+        foreach (var verb in AllVerbs)
+            Uninstall(verb);
     }
 
     public static string DetectCliPath()
@@ -76,8 +168,15 @@ public static class ShellExtensionService
             if (match is not null) return match;
         }
 
-        // Fall back to expected production location even if it doesn't exist yet.
         return sameFolder;
+    }
+
+    public static string DetectAppPath()
+    {
+        // The running App's own exe is the right target for --dedup / --inspect / --clone.
+        var self = Environment.ProcessPath;
+        if (!string.IsNullOrEmpty(self) && File.Exists(self)) return self;
+        return Path.Combine(AppContext.BaseDirectory, "PowerLink.App.exe");
     }
 
     public static string DetectIconPath()
@@ -85,7 +184,6 @@ public static class ShellExtensionService
         var baseDir = AppContext.BaseDirectory;
         var ico = Path.Combine(baseDir, "Assets", "Icon.ico");
         if (File.Exists(ico)) return ico;
-        // Fall back: the App exe carries the embedded icon at index 0.
         return Path.Combine(baseDir, "PowerLink.App.exe");
     }
 
@@ -125,7 +223,7 @@ public static class ShellExtensionService
         }
         catch
         {
-            // Silently ignore — Uninstall is idempotent.
+            // Silently ignore — uninstall is idempotent.
         }
     }
 
