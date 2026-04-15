@@ -18,14 +18,6 @@ PowerLink starts narrow: point it at a folder of models, it finds the duplicates
 
 ---
 
-## Demo
-
-<!-- TODO: replace placeholder with a 30-60s screen capture showing: scan a folder, see duplicate groups, press "Replace duplicates with hardlinks", watch the space-saved number go up, confirm the files still open normally. -->
-
-![Demo video placeholder](docs/media/demo.mp4)
-
----
-
 ## What it does
 
 **Deduplicate.** Scan one or more folders, find files with identical content, and replace duplicates with NTFS hardlinks. Both paths keep working; the data exists once. Typical use: an ML models directory where the same `.safetensors` sits under a dozen subfolders.
