@@ -16,6 +16,13 @@ internal static class ShellUi
             MessageBoxW(IntPtr.Zero, message, title, MB_OK | MB_ICONERROR);
     }
 
+    public static void ReportInfo(string title, string message)
+    {
+        Console.WriteLine(message);
+        if (IsStandaloneConsole())
+            MessageBoxW(IntPtr.Zero, message, title, MB_OK | MB_ICONINFORMATION);
+    }
+
     private static bool IsStandaloneConsole()
     {
         try
@@ -38,4 +45,5 @@ internal static class ShellUi
 
     private const uint MB_OK = 0x00000000;
     private const uint MB_ICONERROR = 0x00000010;
+    private const uint MB_ICONINFORMATION = 0x00000040;
 }

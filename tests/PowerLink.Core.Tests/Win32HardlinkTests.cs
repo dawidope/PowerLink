@@ -101,4 +101,32 @@ public class Win32HardlinkTests
         var result = Win32Hardlink.ToExtendedPath(input);
         Assert.Equal(input, result);
     }
+
+    [Fact]
+    public void EnumerateHardLinks_ReturnsAllPaths()
+    {
+        using var temp = new TempDirectory();
+        var a = temp.CreateFile("a.bin", new byte[] { 1, 2, 3 });
+        var b = Path.Combine(temp.Path, "sub", "b.bin");
+        Directory.CreateDirectory(Path.GetDirectoryName(b)!);
+        Win32Hardlink.CreateHardLink(b, a);
+
+        var links = Win32Hardlink.EnumerateHardLinks(a);
+
+        Assert.Equal(2, links.Count);
+        Assert.Contains(links, p => string.Equals(p, a, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(links, p => string.Equals(p, b, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EnumerateHardLinks_SingleLink_ReturnsOnePath()
+    {
+        using var temp = new TempDirectory();
+        var a = temp.CreateFile("solo.bin", new byte[] { 42 });
+
+        var links = Win32Hardlink.EnumerateHardLinks(a);
+
+        Assert.Single(links);
+        Assert.Equal(a, links[0], ignoreCase: true);
+    }
 }

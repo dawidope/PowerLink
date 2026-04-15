@@ -18,6 +18,7 @@ public static class Program
         root.Add(BuildCloneCommand());
         root.Add(BuildPickCommand());
         root.Add(BuildDropCommand());
+        root.Add(BuildShowLinksCommand());
         return root.Parse(args).InvokeAsync();
     }
 
@@ -119,6 +120,45 @@ public static class Program
         cmd.Add(targetArg);
         cmd.SetAction((parseResult, ct) => DropAsync(parseResult.GetValue(targetArg)!, ct));
         return cmd;
+    }
+
+    private static Command BuildShowLinksCommand()
+    {
+        var pathArg = new Argument<string>("path") { Description = "File to list hardlinks for." };
+        var cmd = new Command("show-links", "List every path that shares this file's data on disk.");
+        cmd.Add(pathArg);
+        cmd.SetAction((parseResult, _) => Task.FromResult(ShowLinks(parseResult.GetValue(pathArg)!)));
+        return cmd;
+    }
+
+    private static int ShowLinks(string path)
+    {
+        var full = Path.GetFullPath(path);
+        if (!File.Exists(full))
+        {
+            ShellUi.ReportError("PowerLink: Show hardlinks", $"File not found: {full}");
+            return 1;
+        }
+        try
+        {
+            var links = Win32Hardlink.EnumerateHardLinks(full);
+            var name = Path.GetFileName(full);
+            if (links.Count <= 1)
+            {
+                ShellUi.ReportInfo("PowerLink: Hardlinks",
+                    $"'{name}' has no hardlinks — it's the only on-disk reference to this data.");
+                return 0;
+            }
+            var body = $"'{name}' shares its data with {links.Count - 1} other path(s):\n\n" +
+                       string.Join(Environment.NewLine, links);
+            ShellUi.ReportInfo("PowerLink: Hardlinks", body);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            ShellUi.ReportError("PowerLink: Show hardlinks", ex.Message);
+            return 1;
+        }
     }
 
     private static int Pick(string path)
