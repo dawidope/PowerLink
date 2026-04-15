@@ -14,13 +14,26 @@ public class DedupExecutor
         _logger = logger ?? NullLogger<DedupExecutor>.Instance;
     }
 
-    public async Task<DedupExecutionResult> ExecuteAsync(
+    public Task<DedupExecutionResult> ExecuteAsync(
         DedupPlan plan,
         CancellationToken cancellationToken = default,
         IProgress<ScanProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
 
+        // File.Delete + CreateHardLink are blocking Win32 calls. Running the
+        // loop inline on an async-over-sync method kept it pinned to the
+        // caller's thread (the WinUI UI thread for DedupPage), freezing the
+        // window for the duration of the plan. Task.Run moves the whole pass
+        // to the thread pool so the UI thread stays responsive.
+        return Task.Run(() => ExecutePlan(plan, cancellationToken, progress));
+    }
+
+    private DedupExecutionResult ExecutePlan(
+        DedupPlan plan,
+        CancellationToken cancellationToken,
+        IProgress<ScanProgress>? progress)
+    {
         var failures = new List<DedupFailure>();
         var successCount = 0;
         long bytesRecovered = 0;
@@ -84,8 +97,6 @@ public class DedupExecutor
         {
             wasCancelled = true;
         }
-
-        await Task.CompletedTask;
 
         return new DedupExecutionResult
         {
