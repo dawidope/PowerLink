@@ -163,7 +163,8 @@
             <TextBlock Text="{x:Bind ViewModel.SummaryText, Mode=OneWay}" FontWeight="SemiBold" TextWrapping="Wrap"/>
         </StackPanel>
 
-        <Grid Grid.Row="6" RowSpacing="8">
+        <Grid Grid.Row="6" RowSpacing="8"
+              Visibility="{x:Bind ViewModel.GroupsVisibility, Mode=OneWay}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>

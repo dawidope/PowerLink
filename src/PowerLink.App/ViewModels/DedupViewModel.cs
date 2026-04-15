@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI.Xaml;
 using PowerLink.App.Services;
 using PowerLink.Core.Dedup;
 using PowerLink.Core.Models;
@@ -23,6 +24,8 @@ public partial class DedupViewModel : ObservableObject
 
     public ObservableCollection<string> Paths { get; } = new();
     public ObservableCollection<DuplicateGroupViewModel> Groups { get; } = new();
+
+    public Visibility GroupsVisibility => Groups.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     [ObservableProperty] private double _minSizeMiB = 1;
 
@@ -66,6 +69,7 @@ public partial class DedupViewModel : ObservableObject
     public DedupViewModel()
     {
         Paths.CollectionChanged += (_, _) => ScanCommand.NotifyCanExecuteChanged();
+        Groups.CollectionChanged += (_, _) => OnPropertyChanged(nameof(GroupsVisibility));
     }
 
     [RelayCommand]
