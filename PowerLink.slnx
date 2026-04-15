@@ -5,6 +5,9 @@
     </Project>
     <Project Path="src/PowerLink.Cli/PowerLink.Cli.csproj" />
     <Project Path="src/PowerLink.Core/PowerLink.Core.csproj" />
+    <Project Path="src/PowerLink.ShellExt/PowerLink.ShellExt.vcxproj">
+      <Platform Project="x64" />
+    </Project>
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PowerLink.Core.Tests/PowerLink.Core.Tests.csproj" />
