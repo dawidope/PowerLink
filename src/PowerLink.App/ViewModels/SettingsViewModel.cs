@@ -58,13 +58,18 @@ public partial class SettingsViewModel : ObservableObject
     // True when this process was launched out of a Velopack-managed install
     // (%LocalAppData%\PowerLink\). Drives which "apply update" verb the page
     // exposes — Install vs Open Releases page.
+    // Auto-updates work for both Setup.exe install and Velopack Portable.zip
+    // (both ship with Update.exe). False means we're running an ad-hoc dev
+    // build out of bin\Debug — in-app update can't restart it safely.
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(VelopackModeText))]
+    [NotifyPropertyChangedFor(nameof(UpdateModeText))]
+    [NotifyCanExecuteChangedFor(nameof(InstallUpdateCommand))]
+    [NotifyPropertyChangedFor(nameof(InstallButtonVisibility))]
     public partial bool IsVelopackInstalled { get; set; }
 
-    public string VelopackModeText => IsVelopackInstalled
-        ? "Installed via Setup.exe — auto-updates available."
-        : "Portable install — manual update via the Releases page.";
+    public string UpdateModeText => IsVelopackInstalled
+        ? "Auto-updates enabled."
+        : "Dev build — auto-update disabled. Use the Releases page to grab a real build.";
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CheckForUpdatesCommand))]
@@ -390,7 +395,7 @@ public partial class SettingsViewModel : ObservableObject
                     IsUpdateAvailable = true;
                     UpdateStatus = IsVelopackInstalled
                         ? $"Update available: v{result.AvailableVersion}. Click Install to apply."
-                        : $"Update available: v{result.AvailableVersion}. Open the Releases page to download.";
+                        : $"Update available: v{result.AvailableVersion}. Open the Releases page to grab Setup.exe or Portable.zip.";
                     break;
                 case UpdateAvailability.Failed:
                     UpdateStatus = $"Check failed: {result.ErrorMessage}";
@@ -408,7 +413,7 @@ public partial class SettingsViewModel : ObservableObject
         UpdateStatus = "Downloading and applying… The app will restart.";
         try
         {
-            await _updateService.ApplyVelopackAsync(_pendingUpdate);
+            await _updateService.ApplyAsync(_pendingUpdate);
             UpdateStatus = "Restart didn't happen — try again or download manually.";
         }
         catch (Exception ex)

@@ -2,7 +2,7 @@
 
 NTFS hardlink tool for Windows — deduplicate identical files in place, clone directories without copying data, and drive it all from Explorer.
 
-> **Status:** pre-release. Portable zips on the [Releases](../../releases) page, not code-signed yet. See [Limitations](#limitations) before installing.
+> **Status:** pre-release. Setup.exe + portable zip on the [Releases](../../releases) page, not code-signed yet. See [Limitations](#limitations) before installing.
 
 ---
 
@@ -58,24 +58,25 @@ All of this is driven from a WinUI 3 app and a matching CLI. The shell extension
 
 ## Download
 
-Portable zips are published on the [Releases](../../releases) page. Two flavors per tagged release, both x64:
+Two flavors per tagged release on the [Releases](../../releases) page. Both bundle the .NET 8 runtime (no separate install needed) and both auto-update from inside Settings → Updates.
 
-- **`PowerLink-<version>-win-x64.zip`** — framework-dependent, ~5–10 MB. Requires the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) installed on the machine.
-- **`PowerLink-<version>-win-x64-selfcontained.zip`** — bundles the .NET runtime, ~80 MB. Nothing else to install.
+- **`PowerLink-win-Setup.exe`** — installer. Per-user install (no admin), Start Menu entry, Add/Remove Programs registration. ~80 MB.
+- **`PowerLink-win-Portable.zip`** — extract anywhere, run `PowerLink.exe`. No registry footprint until you opt into shell integration. ~80 MB.
+
+Both are produced by [Velopack](https://velopack.io) and share the same auto-update mechanism — the app checks GitHub Releases, downloads a delta, and restarts itself. Setup.exe and Portable.zip are interchangeable in everything except the install footprint.
 
 First run triggers Windows SmartScreen (the binaries aren't code-signed yet) — click **More info → Run anyway**.
 
 ## Quick start
 
-1. Download a zip from [Releases](../../releases), extract anywhere.
-2. Run `PowerLink.App.exe`.
-3. Pick an operation:
+1. Download Setup.exe (run it) **or** Portable.zip (extract anywhere, run `PowerLink.exe`).
+2. Pick an operation:
    - **Deduplicate** — add folders, press Scan (F5), review groups, press "Replace duplicates with hardlinks".
    - **Clone** — pick source + destination, optionally Dry run, press Run.
    - **Inspect** — add folders, press Scan to see all existing hardlink groups.
-4. Optional: open **Settings** and install shell integration (see [Explorer integration](#explorer-integration) below).
+3. Optional: open **Settings** and install shell integration (see [Explorer integration](#explorer-integration) below).
 
-No installer, no service, no registry writes until you opt into shell integration from Settings.
+No background service, no registry writes until you opt into shell integration from Settings. Setup.exe registers itself in Add/Remove Programs (per-user, no admin); Portable.zip leaves no trace beyond the folder you extracted into.
 
 ---
 
@@ -122,7 +123,7 @@ Paths with spaces: quote them. Minimum file size for dedup defaults to 1 MiB.
 - **Windows 11 build 22000+** — for the modern top-section menu (Windows 10 lacks the API).
 - **NTFS** — all hardlink operations. FAT/exFAT volumes are rejected with a friendly error.
 - **x64 or ARM64** — ARM64 builds compile but are **untested** on real hardware. See [Limitations](#limitations).
-- **.NET 8 runtime** — the app and CLI are framework-dependent; download from [dotnet.microsoft.com](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) if you don't already have it.
+- **.NET 8 runtime** — bundled in both Setup.exe and Portable.zip. Nothing to install separately.
 - **Developer Mode** — only for the experimental modern menu, because the sparse MSIX package is unsigned.
 - **Admin** — only for installing the overlay icon (HKLM write).
 

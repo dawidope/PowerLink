@@ -345,7 +345,7 @@
                         <TextBlock>
                             <Run Text="Current version: v"/><Run Text="{x:Bind ViewModel.CurrentVersionText, Mode=OneWay}"/>
                         </TextBlock>
-                        <TextBlock Text="{x:Bind ViewModel.VelopackModeText, Mode=OneWay}"
+                        <TextBlock Text="{x:Bind ViewModel.UpdateModeText, Mode=OneWay}"
                                    Opacity="0.75" TextWrapping="Wrap"/>
                     </StackPanel>
 

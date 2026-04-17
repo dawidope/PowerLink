@@ -10,16 +10,6 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - variant: framework-dependent
-            self_contained: 'false'
-            suffix: win-x64
-          - variant: self-contained
-            self_contained: 'true'
-            suffix: win-x64-selfcontained
 
     steps:
       - uses: actions/checkout@v5
@@ -40,10 +30,10 @@ jobs:
           -c Release
           -r win-x64
           -p:Platform=x64
-          -p:SelfContained=${{ matrix.self_contained }}
+          -p:SelfContained=true
           -p:PublishSingleFile=false
           -p:PublishTrimmed=false
-          -o artifacts/${{ matrix.suffix }}
+          -o artifacts/publish
 
       - name: Publish Cli into same folder
         run: >
@@ -51,10 +41,10 @@ jobs:
           -c Release
           -r win-x64
           -p:Platform=x64
-          -p:SelfContained=${{ matrix.self_contained }}
+          -p:SelfContained=true
           -p:PublishSingleFile=false
           -p:PublishTrimmed=false
-          -o artifacts/${{ matrix.suffix }}
+          -o artifacts/publish
 
       - name: Sanity check payload
         shell: pwsh
@@ -69,12 +59,12 @@ jobs:
           )
           $missing = @()
           foreach ($f in $required) {
-            $p = "artifacts/${{ matrix.suffix }}/$f"
+            $p = "artifacts/publish/$f"
             if (-not (Test-Path $p)) { $missing += $f }
           }
           if ($missing.Count -gt 0) {
             Write-Error "Missing from publish output: $($missing -join ', ')"
-            Get-ChildItem artifacts/${{ matrix.suffix }} -Recurse | Select-Object -First 100
+            Get-ChildItem artifacts/publish -Recurse | Select-Object -First 100
             exit 1
           }
 
@@ -86,14 +76,7 @@ jobs:
           $ver = $tag -replace '^v',''
           "version=$ver" >> $env:GITHUB_OUTPUT
 
-      - name: Zip
-        shell: pwsh
-        run: |
-          $zip = "PowerLink-${{ steps.ver.outputs.version }}-${{ matrix.suffix }}.zip"
-          Compress-Archive -Path artifacts/${{ matrix.suffix }}/* -DestinationPath $zip -CompressionLevel Optimal
-
       - name: Pack with Velopack
-        if: matrix.variant == 'self-contained'
         shell: pwsh
         env:
           # Authenticate vpk's GitHub API hits so they don't fall under the
@@ -113,21 +96,13 @@ jobs:
           vpk pack `
             --packId PowerLink `
             --packVersion ${{ steps.ver.outputs.version }} `
-            --packDir artifacts/${{ matrix.suffix }} `
+            --packDir artifacts/publish `
             --mainExe PowerLink.App.exe `
             --packTitle "PowerLink" `
             --packAuthors "Dawid Wenderski" `
             --outputDir velopack-output
 
       - uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.suffix }}
-          path: PowerLink-*.zip
-          if-no-files-found: error
-
-      - name: Upload Velopack artifacts
-        if: matrix.variant == 'self-contained'
-        uses: actions/upload-artifact@v6
         with:
           name: velopack
           path: velopack-output/*
@@ -145,8 +120,8 @@ jobs:
       - uses: softprops/action-gh-release@v3
         with:
           files: |
-            dist/PowerLink-*.zip
             dist/*Setup.exe
+            dist/*Portable.zip
             dist/*.nupkg
             dist/releases.win.json
             dist/assets.win.json

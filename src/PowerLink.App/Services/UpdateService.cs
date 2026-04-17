@@ -5,9 +5,6 @@ using Velopack.Sources;
 
 namespace PowerLink.App.Services;
 
-// GithubSource doubles as a plain release-feed reader even when the app
-// isn't installed via Velopack, so portable users can call CheckAsync too
-// — the fork only happens at apply time (Velopack vs browser).
 public sealed class UpdateService
 {
     private const string RepoUrl = "https://github.com/dawidope/PowerLink";
@@ -20,15 +17,15 @@ public sealed class UpdateService
         _manager = new UpdateManager(source);
     }
 
+    // True for both flavors that ship from CI (Setup.exe install or Velopack
+    // Portable.zip extracted). False for ad-hoc builds run out of bin/Debug
+    // or any layout missing Update.exe in the parent folder.
     public bool IsVelopackInstalled => _manager.IsInstalled;
 
     public string CurrentVersionText
     {
         get
         {
-            // UpdateManager.CurrentVersion is null when not installed via
-            // Velopack. Fall back to assembly version so the Settings page
-            // still has something to show in portable mode.
             var v = _manager.CurrentVersion;
             if (v != null) return v.ToString();
             return Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
@@ -56,12 +53,13 @@ public sealed class UpdateService
         }
     }
 
-    public async Task ApplyVelopackAsync(UpdateInfo info)
+    public async Task ApplyAsync(UpdateInfo info)
     {
         ArgumentNullException.ThrowIfNull(info);
         if (!IsVelopackInstalled)
             throw new InvalidOperationException(
-                "ApplyVelopackAsync requires the app to be installed via Velopack.");
+                "ApplyAsync requires the app to be running from a Velopack-managed " +
+                "install (Setup.exe or Portable.zip). Dev builds out of bin/ can't update.");
 
         await _manager.DownloadUpdatesAsync(info).ConfigureAwait(false);
         _manager.ApplyUpdatesAndRestart(info);
