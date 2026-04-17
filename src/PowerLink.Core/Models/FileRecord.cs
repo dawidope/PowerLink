@@ -9,4 +9,5 @@ public record FileRecord
     public required uint HardLinkCount { get; init; }
     public required ulong FileIndex { get; init; }
     public required uint VolumeSerialNumber { get; init; }
+    public required DateTime LastWriteTimeUtc { get; init; }
 }

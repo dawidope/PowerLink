@@ -105,6 +105,10 @@ public class DedupExecutorTests
                     CanonicalPath = missingCanonical,
                     SizeBytes = 10,
                     Hash = "abc",
+                    // Snapshot values are irrelevant — verify aborts at the
+                    // canonical File.Exists check before consulting them.
+                    CanonicalSnapshot = default,
+                    DuplicateSnapshot = default,
                 },
             },
         };
@@ -127,6 +131,11 @@ public class DedupExecutorTests
         var goodCanonical = temp.CreateFile("ok/a.bin", good);
         var goodDuplicate = temp.CreateFile("ok/b.bin", good);
 
+        // Build a real plan over the good pair so its action carries real
+        // snapshots + hash. Splice in a hand-built failure action up front.
+        var goodPlan = await BuildPlanAsync(temp);
+        Assert.Single(goodPlan.Actions);
+
         var plan = new DedupPlan
         {
             Actions = new[]
@@ -138,15 +147,10 @@ public class DedupExecutorTests
                     CanonicalPath = Path.Combine(temp.Path, "nope", "missing.bin"),
                     SizeBytes = 10,
                     Hash = "abc",
+                    CanonicalSnapshot = default,
+                    DuplicateSnapshot = default,
                 },
-                // Succeeds.
-                new DedupAction
-                {
-                    DuplicatePath = goodDuplicate,
-                    CanonicalPath = goodCanonical,
-                    SizeBytes = good.Length,
-                    Hash = "good",
-                },
+                goodPlan.Actions[0],
             },
         };
 
@@ -160,6 +164,192 @@ public class DedupExecutorTests
         var infoCanonical = Win32Hardlink.GetFileInformation(goodCanonical);
         var infoDuplicate = Win32Hardlink.GetFileInformation(goodDuplicate);
         Assert.Equal(infoCanonical.FileIndex, infoDuplicate.FileIndex);
+    }
+
+    // Engine assigns canonical = lowest fileIndex inside the group, so the
+    // physical (a/f.bin, b/f.bin) → (canonical, duplicate) mapping is
+    // non-deterministic. Tests below mutate via plan.Actions[0].* paths
+    // rather than the temp-file variables to stay role-correct.
+
+    [Fact]
+    public async Task Execute_DuplicateContentChanged_AbortsAndPreservesDuplicate()
+    {
+        using var temp = new TempDirectory();
+        var content = new byte[4096];
+        new Random(71).NextBytes(content);
+        temp.CreateFile("a/f.bin", content);
+        temp.CreateFile("b/f.bin", content);
+
+        var plan = await BuildPlanAsync(temp);
+        Assert.Single(plan.Actions);
+        var dupPath = plan.Actions[0].DuplicatePath;
+
+        // Modify dup in place — same size, different content. NTFS bumps
+        // mtime naturally on write, so the executor should re-hash and reject.
+        var mutated = new byte[content.Length];
+        new Random(72).NextBytes(mutated);
+        File.WriteAllBytes(dupPath, mutated);
+
+        var result = await new DedupExecutor().ExecuteAsync(plan);
+
+        Assert.Equal(0, result.SuccessCount);
+        Assert.Equal(1, result.FailureCount);
+        Assert.Contains("Duplicate content changed", result.Failures[0].Reason);
+        Assert.Equal(mutated, File.ReadAllBytes(dupPath));
+    }
+
+    [Fact]
+    public async Task Execute_DuplicateReplacedSameContent_AbortsBecauseFileIndexChanged()
+    {
+        using var temp = new TempDirectory();
+        var content = new byte[4096];
+        new Random(73).NextBytes(content);
+        temp.CreateFile("a/f.bin", content);
+        temp.CreateFile("b/f.bin", content);
+
+        var plan = await BuildPlanAsync(temp);
+        var dupPath = plan.Actions[0].DuplicatePath;
+
+        // Atomically replace dup: delete + recreate yields a new MFT record
+        // (different fileIndex). Conservative verify rejects this even though
+        // the content matches — the file we scanned no longer exists at this
+        // path and we shouldn't dedupe a file we never saw.
+        File.Delete(dupPath);
+        File.WriteAllBytes(dupPath, content);
+
+        var result = await new DedupExecutor().ExecuteAsync(plan);
+
+        Assert.Equal(0, result.SuccessCount);
+        Assert.Equal(1, result.FailureCount);
+        Assert.Contains("Duplicate file replaced", result.Failures[0].Reason);
+        Assert.Equal(content, File.ReadAllBytes(dupPath));
+    }
+
+    [Fact]
+    public async Task Execute_CanonicalReplaced_AbortsAndPreservesAll()
+    {
+        using var temp = new TempDirectory();
+        var content = new byte[4096];
+        new Random(81).NextBytes(content);
+        temp.CreateFile("a/f.bin", content);
+        temp.CreateFile("b/f.bin", content);
+
+        var plan = await BuildPlanAsync(temp);
+        var canonPath = plan.Actions[0].CanonicalPath;
+        var dupPath = plan.Actions[0].DuplicatePath;
+
+        // Replace canonical: same path + same bytes but new fileIndex.
+        File.Delete(canonPath);
+        File.WriteAllBytes(canonPath, content);
+
+        var result = await new DedupExecutor().ExecuteAsync(plan);
+
+        Assert.Equal(0, result.SuccessCount);
+        Assert.Equal(1, result.FailureCount);
+        Assert.Contains("Canonical file replaced", result.Failures[0].Reason);
+        Assert.True(File.Exists(dupPath));
+        Assert.Equal(content, File.ReadAllBytes(dupPath));
+    }
+
+    [Fact]
+    public async Task Execute_DuplicateAlreadyHardlinkedToCanonical_ReportsAsAlreadyLinked()
+    {
+        using var temp = new TempDirectory();
+        var content = new byte[4096];
+        new Random(91).NextBytes(content);
+        temp.CreateFile("a/f.bin", content);
+        temp.CreateFile("b/f.bin", content);
+
+        var plan = await BuildPlanAsync(temp);
+        var canonPath = plan.Actions[0].CanonicalPath;
+        var dupPath = plan.Actions[0].DuplicatePath;
+
+        // External tool (or a previous dedup run) hardlinks dup to canonical
+        // between scan and apply. Verify must detect the shared physical file
+        // and treat the action as a no-op rather than delete-and-relink.
+        // The dup path's fileIndex now equals canonical's — but also the
+        // canonical's *snapshot* fileIndex still matches (canonical itself
+        // was untouched), so the canonical-replaced check passes too.
+        File.Delete(dupPath);
+        Win32Hardlink.CreateHardLink(dupPath, canonPath);
+
+        var result = await new DedupExecutor().ExecuteAsync(plan);
+
+        Assert.Equal(0, result.SuccessCount);
+        Assert.Equal(0, result.FailureCount);
+        Assert.Equal(1, result.AlreadyLinkedCount);
+        Assert.Equal(0, result.BytesRecovered);
+    }
+
+    [Fact]
+    public async Task Execute_MtimeChangedButContentSame_RehashesAndProceeds()
+    {
+        using var temp = new TempDirectory();
+        var content = new byte[4096];
+        new Random(101).NextBytes(content);
+        temp.CreateFile("a/f.bin", content);
+        temp.CreateFile("b/f.bin", content);
+
+        var plan = await BuildPlanAsync(temp);
+        var canonPath = plan.Actions[0].CanonicalPath;
+        var dupPath = plan.Actions[0].DuplicatePath;
+
+        // Touch mtime forward. Identity (size, fileIndex, volSerial) is intact,
+        // so verify falls through to a re-hash. Re-hash matches recorded value
+        // → action proceeds.
+        File.SetLastWriteTimeUtc(dupPath, DateTime.UtcNow.AddHours(1));
+
+        var result = await new DedupExecutor().ExecuteAsync(plan);
+
+        Assert.Equal(1, result.SuccessCount);
+        Assert.Equal(0, result.FailureCount);
+
+        var infoCanon = Win32Hardlink.GetFileInformation(canonPath);
+        var infoDup = Win32Hardlink.GetFileInformation(dupPath);
+        Assert.Equal(infoCanon.FileIndex, infoDup.FileIndex);
+    }
+
+    [Fact]
+    public async Task Execute_AlwaysVerifyContent_DetectsContentSwapWithRestoredMtime()
+    {
+        using var temp = new TempDirectory();
+        var content = new byte[4096];
+        new Random(111).NextBytes(content);
+        temp.CreateFile("a/f.bin", content);
+        temp.CreateFile("b/f.bin", content);
+
+        var scanner = new FileScanner();
+        var records = await scanner.ScanAsync(new[] { temp.Path });
+        var scanResult = await new DedupEngine().AnalyzeAsync(records);
+        var plan = DedupEngine.CreatePlan(scanResult);
+        Assert.Single(plan.Actions);
+        var dupPath = plan.Actions[0].DuplicatePath;
+        var dupRecord = records.First(r => r.FullPath == dupPath);
+
+        // Stealth mutation: rewrite dup with different bytes (same size), then
+        // restore the original mtime. Without AlwaysVerifyContent the tiered
+        // verify trusts mtime and would proceed with a destructive delete.
+        // With AlwaysVerifyContent on, the re-hash catches the swap.
+        var mutated = new byte[content.Length];
+        new Random(112).NextBytes(mutated);
+        File.WriteAllBytes(dupPath, mutated);
+        File.SetLastWriteTimeUtc(dupPath, dupRecord.LastWriteTimeUtc);
+
+        var result = await new DedupExecutor().ExecuteAsync(
+            plan, options: new DedupExecutorOptions { AlwaysVerifyContent = true });
+
+        Assert.Equal(0, result.SuccessCount);
+        Assert.Equal(1, result.FailureCount);
+        Assert.Contains("Duplicate content changed", result.Failures[0].Reason);
+        Assert.Equal(mutated, File.ReadAllBytes(dupPath));
+    }
+
+    private static async Task<DedupPlan> BuildPlanAsync(TempDirectory temp)
+    {
+        var scanner = new FileScanner();
+        var records = await scanner.ScanAsync(new[] { temp.Path });
+        var scanResult = await new DedupEngine().AnalyzeAsync(records);
+        return DedupEngine.CreatePlan(scanResult);
     }
 
     private sealed class InlineCancellingProgress : IProgress<ScanProgress>

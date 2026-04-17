@@ -63,6 +63,7 @@ public class FileScanner
                             HardLinkCount = info.HardLinkCount,
                             FileIndex = info.FileIndex,
                             VolumeSerialNumber = info.VolumeSerialNumber,
+                            LastWriteTimeUtc = info.LastWriteTimeUtc,
                         });
 
                         processed++;

@@ -202,6 +202,8 @@ public class DedupEngine
                     CanonicalPath = canonical.FullPath,
                     SizeBytes = group.FileSize,
                     Hash = group.Hash,
+                    CanonicalSnapshot = FileSnapshot.From(canonical),
+                    DuplicateSnapshot = FileSnapshot.From(duplicate),
                 });
             }
         }

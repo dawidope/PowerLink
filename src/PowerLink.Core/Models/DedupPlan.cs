@@ -14,6 +14,12 @@ public record DedupExecutionResult
     public required long BytesRecovered { get; init; }
     public required IReadOnlyList<DedupFailure> Failures { get; init; }
     public bool WasCancelled { get; init; }
+
+    // Actions whose duplicate already pointed to the canonical's physical file
+    // (e.g. someone hardlinked them between scan and apply). Not a failure;
+    // also not counted under SuccessCount / BytesRecovered because no work was
+    // done and no bytes were freed.
+    public int AlreadyLinkedCount { get; init; }
 }
 
 public record DedupFailure

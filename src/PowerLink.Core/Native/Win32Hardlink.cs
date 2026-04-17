@@ -9,7 +9,8 @@ public readonly record struct FileInformation(
     uint HardLinkCount,
     ulong FileIndex,
     uint VolumeSerialNumber,
-    long SizeBytes);
+    long SizeBytes,
+    DateTime LastWriteTimeUtc);
 
 public static class Win32Hardlink
 {
@@ -60,7 +61,9 @@ public static class Win32Hardlink
 
         var fileIndex = ((ulong)info.FileIndexHigh << 32) | info.FileIndexLow;
         var size = ((long)info.FileSizeHigh << 32) | info.FileSizeLow;
-        return new FileInformation(info.NumberOfLinks, fileIndex, info.VolumeSerialNumber, size);
+        var mtimeTicks = ((long)info.LastWriteTime.dwHighDateTime << 32) | (uint)info.LastWriteTime.dwLowDateTime;
+        var mtime = DateTime.FromFileTimeUtc(mtimeTicks);
+        return new FileInformation(info.NumberOfLinks, fileIndex, info.VolumeSerialNumber, size, mtime);
     }
 
     public static bool AreSameVolume(string path1, string path2)
