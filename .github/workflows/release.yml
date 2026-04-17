@@ -102,7 +102,7 @@ jobs:
             --packAuthors "Dawid Wenderski" `
             --outputDir velopack-output
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: velopack
           path: velopack-output/*
@@ -112,7 +112,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
