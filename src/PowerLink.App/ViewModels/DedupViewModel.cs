@@ -34,6 +34,12 @@ public partial class DedupViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(BufferSizeText))]
     private double _bufferSizeLog2 = 6; // 2^6 = 64 KiB
 
+    // Forwarded to DedupExecutorOptions.AlwaysVerifyContent. Off by default
+    // because the tiered verify already re-hashes whenever mtime drifted —
+    // the toggle exists for environments where mtime can't be trusted (sync
+    // tools that restore it post-write).
+    [ObservableProperty] private bool _alwaysVerifyContent;
+
     public int BufferSizeKiB => 1 << (int)BufferSizeLog2;
     public string BufferSizeText => BufferSizeKiB >= 1024
         ? $"{BufferSizeKiB / 1024} MiB"
@@ -153,10 +159,14 @@ public partial class DedupViewModel : ObservableObject
 
         try
         {
-            var result = await _executor.ExecuteAsync(Plan, _cts.Token, progress);
+            var options = new DedupExecutorOptions { AlwaysVerifyContent = AlwaysVerifyContent };
+            var result = await _executor.ExecuteAsync(Plan, _cts.Token, progress, options);
             var prefix = result.WasCancelled ? "Stopped. Partial: " : string.Empty;
+            var alreadyLinked = result.AlreadyLinkedCount > 0
+                ? $", Already linked: {result.AlreadyLinkedCount:N0}"
+                : string.Empty;
             SummaryText =
-                $"{prefix}Success: {result.SuccessCount:N0}, Failures: {result.FailureCount:N0}, " +
+                $"{prefix}Success: {result.SuccessCount:N0}, Failures: {result.FailureCount:N0}{alreadyLinked}, " +
                 $"Recovered: {FormatBytes(result.BytesRecovered)}.";
             StatusText = result.WasCancelled
                 ? "Stopped before all actions completed."

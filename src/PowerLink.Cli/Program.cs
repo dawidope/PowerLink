@@ -67,18 +67,24 @@ public static class Program
         {
             Description = "Actually perform the deduplication (default is dry-run).",
         };
+        var verifyContentOpt = new Option<bool>("--verify-content")
+        {
+            Description = "Re-hash both files before deleting (paranoid mode). Default is mtime-triggered re-hash only.",
+        };
 
         var cmd = new Command("dedup", "Scan and replace duplicates with NTFS hardlinks.");
         cmd.Add(pathsArg);
         cmd.Add(minSizeOpt);
         cmd.Add(executeOpt);
+        cmd.Add(verifyContentOpt);
 
         cmd.SetAction(async (parseResult, ct) =>
         {
             var paths = parseResult.GetValue(pathsArg) ?? Array.Empty<string>();
             var minSize = parseResult.GetValue(minSizeOpt);
             var execute = parseResult.GetValue(executeOpt);
-            return await DedupAsync(paths, minSize, execute, ct);
+            var verifyContent = parseResult.GetValue(verifyContentOpt);
+            return await DedupAsync(paths, minSize, execute, verifyContent, ct);
         });
 
         return cmd;
@@ -328,7 +334,7 @@ public static class Program
         return 0;
     }
 
-    private static async Task<int> DedupAsync(string[] paths, long minSize, bool execute, CancellationToken ct)
+    private static async Task<int> DedupAsync(string[] paths, long minSize, bool execute, bool verifyContent, CancellationToken ct)
     {
         Console.WriteLine($"Scanning {paths.Length} location(s) (min size {FormatBytes(minSize)})...");
 
@@ -360,12 +366,16 @@ public static class Program
         }
 
         Console.WriteLine();
-        Console.WriteLine($"Executing {plan.ActionCount:N0} actions...");
+        Console.WriteLine($"Executing {plan.ActionCount:N0} actions{(verifyContent ? " (with content re-verify)" : string.Empty)}...");
         var executor = new DedupExecutor();
-        var execResult = await executor.ExecuteAsync(plan, ct, progress);
+        var execResult = await executor.ExecuteAsync(
+            plan, ct, progress, options: new DedupExecutorOptions { AlwaysVerifyContent = verifyContent });
         Console.WriteLine();
         var prefix = execResult.WasCancelled ? "Stopped. Partial — " : "Done. ";
-        Console.WriteLine($"{prefix}Success: {execResult.SuccessCount:N0}, Failures: {execResult.FailureCount:N0}, Recovered: {FormatBytes(execResult.BytesRecovered)}.");
+        var alreadyLinked = execResult.AlreadyLinkedCount > 0
+            ? $", Already linked: {execResult.AlreadyLinkedCount:N0}"
+            : string.Empty;
+        Console.WriteLine($"{prefix}Success: {execResult.SuccessCount:N0}, Failures: {execResult.FailureCount:N0}{alreadyLinked}, Recovered: {FormatBytes(execResult.BytesRecovered)}.");
         foreach (var failure in execResult.Failures.Take(20))
             Console.WriteLine($"  FAIL {failure.DuplicatePath}: {failure.Reason}");
 

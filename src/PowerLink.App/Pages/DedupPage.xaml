@@ -214,15 +214,25 @@
                 </ItemsControl>
             </ScrollViewer>
 
-            <Button Grid.Row="2"
-                    Command="{x:Bind ViewModel.ExecuteDedupCommand}"
-                    Style="{ThemeResource AccentButtonStyle}"
-                    HorizontalAlignment="Right">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <SymbolIcon Symbol="Accept"/>
-                    <TextBlock Text="Replace duplicates with hardlinks"/>
-                </StackPanel>
-            </Button>
+            <Grid Grid.Row="2" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <CheckBox Grid.Column="0"
+                          Content="Re-verify file contents before deleting"
+                          IsChecked="{x:Bind ViewModel.AlwaysVerifyContent, Mode=TwoWay}"
+                          VerticalAlignment="Center"
+                          ToolTipService.ToolTip="Forces a full re-hash of both files in every action, even when mtime looks unchanged. Default is off — the tiered verify already re-hashes whenever mtime drifted from the scan. Tick this if you don't trust mtime (e.g. some sync tools restore it after writing)."/>
+                <Button Grid.Column="1"
+                        Command="{x:Bind ViewModel.ExecuteDedupCommand}"
+                        Style="{ThemeResource AccentButtonStyle}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <SymbolIcon Symbol="Accept"/>
+                        <TextBlock Text="Replace duplicates with hardlinks"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
         </Grid>
     </Grid>
 </Page>
