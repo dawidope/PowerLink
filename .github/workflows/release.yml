@@ -92,10 +92,45 @@ jobs:
           $zip = "PowerLink-${{ steps.ver.outputs.version }}-${{ matrix.suffix }}.zip"
           Compress-Archive -Path artifacts/${{ matrix.suffix }}/* -DestinationPath $zip -CompressionLevel Optimal
 
+      - name: Pack with Velopack
+        if: matrix.variant == 'self-contained'
+        shell: pwsh
+        env:
+          # Authenticate vpk's GitHub API hits so they don't fall under the
+          # 60/h anonymous rate limit shared across the runner's IP pool.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dotnet tool install --global vpk
+          # Pull prior release so vpk can compute a delta against it. First-ever
+          # release has nothing to download — swallow that one specific failure
+          # and let vpk pack produce a full-only release. Reset $LASTEXITCODE
+          # locally; $global: would persist past the script and fail the step.
+          vpk download github --repoUrl https://github.com/dawidope/PowerLink
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "vpk download failed (likely no prior Velopack release). Continuing with full release only."
+            $LASTEXITCODE = 0
+          }
+          vpk pack `
+            --packId PowerLink `
+            --packVersion ${{ steps.ver.outputs.version }} `
+            --packDir artifacts/${{ matrix.suffix }} `
+            --mainExe PowerLink.App.exe `
+            --packTitle "PowerLink" `
+            --packAuthors "Dawid Wenderski" `
+            --outputDir velopack-output
+
       - uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.suffix }}
           path: PowerLink-*.zip
+          if-no-files-found: error
+
+      - name: Upload Velopack artifacts
+        if: matrix.variant == 'self-contained'
+        uses: actions/upload-artifact@v6
+        with:
+          name: velopack
+          path: velopack-output/*
           if-no-files-found: error
 
   release:
@@ -109,7 +144,12 @@ jobs:
 
       - uses: softprops/action-gh-release@v3
         with:
-          files: dist/PowerLink-*.zip
+          files: |
+            dist/PowerLink-*.zip
+            dist/*Setup.exe
+            dist/*.nupkg
+            dist/releases.win.json
+            dist/assets.win.json
           draft: ${{ contains(github.ref_name, '-') }}
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true

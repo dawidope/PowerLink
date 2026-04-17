@@ -17,6 +17,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Text="Settings" Style="{ThemeResource TitleTextBlockStyle}"/>
@@ -335,7 +336,48 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock Grid.Row="6" Opacity="0.5" FontSize="12"
+            <Border Grid.Row="6" CornerRadius="8" Padding="20" BorderThickness="1"
+                    BorderBrush="{ThemeResource ControlElevationBorderBrush}"
+                    Background="{ThemeResource SubtleFillColorTransparentBrush}">
+                <StackPanel Spacing="12">
+                    <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Updates"/>
+                    <StackPanel Spacing="2">
+                        <TextBlock>
+                            <Run Text="Current version: v"/><Run Text="{x:Bind ViewModel.CurrentVersionText, Mode=OneWay}"/>
+                        </TextBlock>
+                        <TextBlock Text="{x:Bind ViewModel.VelopackModeText, Mode=OneWay}"
+                                   Opacity="0.75" TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{x:Bind ViewModel.UpdateStatus, Mode=OneWay}"
+                               Opacity="0.8" TextWrapping="Wrap"/>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Command="{x:Bind ViewModel.CheckForUpdatesCommand}"
+                                Style="{ThemeResource AccentButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <SymbolIcon Symbol="Sync"/>
+                                <TextBlock Text="Check for updates"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{x:Bind ViewModel.InstallUpdateCommand}"
+                                Visibility="{x:Bind ViewModel.InstallButtonVisibility, Mode=OneWay}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <SymbolIcon Symbol="Download"/>
+                                <TextBlock Text="Install now"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{x:Bind ViewModel.OpenReleasesPageCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <SymbolIcon Symbol="Link"/>
+                                <TextBlock Text="Open Releases page"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Grid.Row="7" Opacity="0.5" FontSize="12"
                        Text="Context menu verbs and drop handlers live under HKCU (per-user, no admin). Overlay handlers live under HKLM (admin required). After any change: restart Explorer once."/>
         </Grid>
     </ScrollViewer>

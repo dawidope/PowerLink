@@ -6,12 +6,16 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
 using PowerLink.App.Services;
 using PowerLink.Core.State;
+using Velopack;
 
 namespace PowerLink.App.ViewModels;
 
 public partial class SettingsViewModel : ObservableObject
 {
     private const int ErrorCancelled = 1223; // ERROR_CANCELLED — user cancelled UAC prompt
+
+    private readonly UpdateService _updateService = new();
+    private UpdateInfo? _pendingUpdate;
 
     public ObservableCollection<ShellVerbViewModel> Verbs { get; } = new();
     public ObservableCollection<ShellVerbViewModel> OverlayVerbs { get; } = new();
@@ -47,6 +51,41 @@ public partial class SettingsViewModel : ObservableObject
     public Visibility PickedVisibility => HasPicked ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NoPickVisibility => HasPicked ? Visibility.Collapsed : Visibility.Visible;
 
+    // --- Updates section ----------------------------------------------------
+
+    [ObservableProperty] public partial string CurrentVersionText { get; set; }
+
+    // True when this process was launched out of a Velopack-managed install
+    // (%LocalAppData%\PowerLink\). Drives which "apply update" verb the page
+    // exposes — Install vs Open Releases page.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(VelopackModeText))]
+    public partial bool IsVelopackInstalled { get; set; }
+
+    public string VelopackModeText => IsVelopackInstalled
+        ? "Installed via Setup.exe — auto-updates available."
+        : "Portable install — manual update via the Releases page.";
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CheckForUpdatesCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InstallUpdateCommand))]
+    public partial bool IsCheckingForUpdates { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(InstallUpdateCommand))]
+    [NotifyPropertyChangedFor(nameof(InstallButtonVisibility))]
+    public partial bool IsUpdateAvailable { get; set; }
+
+    [ObservableProperty] public partial string? UpdateStatus { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CheckForUpdatesCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InstallUpdateCommand))]
+    public partial bool IsInstallingUpdate { get; set; }
+
+    public Visibility InstallButtonVisibility =>
+        IsUpdateAvailable && IsVelopackInstalled ? Visibility.Visible : Visibility.Collapsed;
+
     // Injected by SettingsPage — returns true if the user confirmed installing
     // the overlay despite the system being at/over Windows' 15-handler limit.
     // Kept as a simple Func to avoid dragging a view reference into the VM.
@@ -59,6 +98,8 @@ public partial class SettingsViewModel : ObservableObject
         // would leave them null until then.
         CliPath = string.Empty;
         AppPath = string.Empty;
+        CurrentVersionText = _updateService.CurrentVersionText;
+        IsVelopackInstalled = _updateService.IsVelopackInstalled;
 
         foreach (var verb in ShellExtensionService.AllVerbs)
             Verbs.Add(new ShellVerbViewModel { Verb = verb });
@@ -329,6 +370,60 @@ public partial class SettingsViewModel : ObservableObject
             Refresh();
         }
     }
+
+    [RelayCommand(CanExecute = nameof(CanCheckForUpdates))]
+    private async Task CheckForUpdatesAsync()
+    {
+        IsCheckingForUpdates = true;
+        UpdateStatus = "Checking…";
+        IsUpdateAvailable = false;
+        try
+        {
+            var result = await _updateService.CheckAsync();
+            switch (result.Availability)
+            {
+                case UpdateAvailability.UpToDate:
+                    UpdateStatus = $"Up to date (v{CurrentVersionText}).";
+                    break;
+                case UpdateAvailability.Available:
+                    _pendingUpdate = result.VelopackInfo;
+                    IsUpdateAvailable = true;
+                    UpdateStatus = IsVelopackInstalled
+                        ? $"Update available: v{result.AvailableVersion}. Click Install to apply."
+                        : $"Update available: v{result.AvailableVersion}. Open the Releases page to download.";
+                    break;
+                case UpdateAvailability.Failed:
+                    UpdateStatus = $"Check failed: {result.ErrorMessage}";
+                    break;
+            }
+        }
+        finally { IsCheckingForUpdates = false; }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanInstallUpdate))]
+    private async Task InstallUpdateAsync()
+    {
+        if (_pendingUpdate is null) return;
+        IsInstallingUpdate = true;
+        UpdateStatus = "Downloading and applying… The app will restart.";
+        try
+        {
+            await _updateService.ApplyVelopackAsync(_pendingUpdate);
+            UpdateStatus = "Restart didn't happen — try again or download manually.";
+        }
+        catch (Exception ex)
+        {
+            UpdateStatus = $"Install failed: {ex.Message}";
+        }
+        finally { IsInstallingUpdate = false; }
+    }
+
+    [RelayCommand]
+    private void OpenReleasesPage() => _updateService.OpenReleasesPage();
+
+    private bool CanCheckForUpdates() => !IsCheckingForUpdates && !IsInstallingUpdate;
+    private bool CanInstallUpdate() =>
+        IsUpdateAvailable && IsVelopackInstalled && !IsCheckingForUpdates && !IsInstallingUpdate;
 
     [RelayCommand]
     private void RestartExplorer()
