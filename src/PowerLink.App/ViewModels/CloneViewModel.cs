@@ -19,28 +19,33 @@ public partial class CloneViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunCommand))]
-    private string? _sourcePath;
+    public partial string? SourcePath { get; set; }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunCommand))]
-    private string? _destPath;
+    public partial string? DestPath { get; set; }
 
-    [ObservableProperty] private bool _dryRun;
+    [ObservableProperty] public partial bool DryRun { get; set; }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
-    private bool _isRunning;
+    public partial bool IsRunning { get; set; }
 
-    [ObservableProperty] private string _statusText = "Pick a source and destination.";
-    [ObservableProperty] private string? _summaryText;
-    [ObservableProperty] private string? _phaseText;
-    [ObservableProperty] private string? _filesText;
-    [ObservableProperty] private string? _speedText;
-    [ObservableProperty] private string? _etaText;
-    [ObservableProperty] private string? _currentFileText;
-    [ObservableProperty] private double _progressValue;
-    [ObservableProperty] private bool _isProgressIndeterminate;
+    [ObservableProperty] public partial string StatusText { get; set; }
+    [ObservableProperty] public partial string? SummaryText { get; set; }
+    [ObservableProperty] public partial string? PhaseText { get; set; }
+    [ObservableProperty] public partial string? FilesText { get; set; }
+    [ObservableProperty] public partial string? SpeedText { get; set; }
+    [ObservableProperty] public partial string? EtaText { get; set; }
+    [ObservableProperty] public partial string? CurrentFileText { get; set; }
+    [ObservableProperty] public partial double ProgressValue { get; set; }
+    [ObservableProperty] public partial bool IsProgressIndeterminate { get; set; }
+
+    public CloneViewModel()
+    {
+        StatusText = "Pick a source and destination.";
+    }
 
     [RelayCommand]
     private async Task PickSourceFolderAsync()

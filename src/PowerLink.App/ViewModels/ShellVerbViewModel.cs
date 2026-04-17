@@ -9,12 +9,12 @@ public partial class ShellVerbViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText))]
-    private bool _isInstalled;
+    public partial bool IsInstalled { get; set; }
 
     // What the checkbox is currently bound to. Equals IsInstalled after
     // Refresh(); Apply() reconciles registry state to this value.
     [ObservableProperty]
-    private bool _shouldInstall;
+    public partial bool ShouldInstall { get; set; }
 
     public string Label => Verb.Label;
     public string Description => Verb.Description;

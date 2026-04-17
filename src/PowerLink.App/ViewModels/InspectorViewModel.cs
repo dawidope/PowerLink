@@ -19,17 +19,18 @@ public partial class InspectorViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ScanCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
-    private bool _isScanning;
+    public partial bool IsScanning { get; set; }
 
-    [ObservableProperty] private string _statusText = "Add folders to inspect.";
-    [ObservableProperty] private string? _summaryText;
-    [ObservableProperty] private double _progressValue;
-    [ObservableProperty] private bool _isProgressIndeterminate;
-    [ObservableProperty] private string? _currentFileText;
-    [ObservableProperty] private string? _filesText;
+    [ObservableProperty] public partial string StatusText { get; set; }
+    [ObservableProperty] public partial string? SummaryText { get; set; }
+    [ObservableProperty] public partial double ProgressValue { get; set; }
+    [ObservableProperty] public partial bool IsProgressIndeterminate { get; set; }
+    [ObservableProperty] public partial string? CurrentFileText { get; set; }
+    [ObservableProperty] public partial string? FilesText { get; set; }
 
     public InspectorViewModel()
     {
+        StatusText = "Add folders to inspect.";
         Paths.CollectionChanged += (_, _) => ScanCommand.NotifyCanExecuteChanged();
     }
 

@@ -27,18 +27,18 @@ public partial class DedupViewModel : ObservableObject
 
     public Visibility GroupsVisibility => Groups.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-    [ObservableProperty] private double _minSizeMiB = 1;
+    [ObservableProperty] public partial double MinSizeMiB { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(BufferSizeKiB))]
     [NotifyPropertyChangedFor(nameof(BufferSizeText))]
-    private double _bufferSizeLog2 = 6; // 2^6 = 64 KiB
+    public partial double BufferSizeLog2 { get; set; }
 
     // Forwarded to DedupExecutorOptions.AlwaysVerifyContent. Off by default
     // because the tiered verify already re-hashes whenever mtime drifted —
     // the toggle exists for environments where mtime can't be trusted (sync
     // tools that restore it post-write).
-    [ObservableProperty] private bool _alwaysVerifyContent;
+    [ObservableProperty] public partial bool AlwaysVerifyContent { get; set; }
 
     public int BufferSizeKiB => 1 << (int)BufferSizeLog2;
     public string BufferSizeText => BufferSizeKiB >= 1024
@@ -49,31 +49,34 @@ public partial class DedupViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ScanCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExecuteDedupCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
-    private bool _isScanning;
+    public partial bool IsScanning { get; set; }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ScanCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExecuteDedupCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
-    private bool _isExecuting;
+    public partial bool IsExecuting { get; set; }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecuteDedupCommand))]
-    private DedupPlan? _plan;
+    public partial DedupPlan? Plan { get; set; }
 
-    [ObservableProperty] private string _statusText = "Ready.";
-    [ObservableProperty] private string? _summaryText;
-    [ObservableProperty] private string? _phaseText;
-    [ObservableProperty] private string? _filesText;
-    [ObservableProperty] private string? _bytesText;
-    [ObservableProperty] private string? _speedText;
-    [ObservableProperty] private string? _etaText;
-    [ObservableProperty] private string? _currentFileText;
-    [ObservableProperty] private double _progressValue;
-    [ObservableProperty] private bool _isProgressIndeterminate;
+    [ObservableProperty] public partial string StatusText { get; set; }
+    [ObservableProperty] public partial string? SummaryText { get; set; }
+    [ObservableProperty] public partial string? PhaseText { get; set; }
+    [ObservableProperty] public partial string? FilesText { get; set; }
+    [ObservableProperty] public partial string? BytesText { get; set; }
+    [ObservableProperty] public partial string? SpeedText { get; set; }
+    [ObservableProperty] public partial string? EtaText { get; set; }
+    [ObservableProperty] public partial string? CurrentFileText { get; set; }
+    [ObservableProperty] public partial double ProgressValue { get; set; }
+    [ObservableProperty] public partial bool IsProgressIndeterminate { get; set; }
 
     public DedupViewModel()
     {
+        MinSizeMiB = 1;
+        BufferSizeLog2 = 6; // 2^6 = 64 KiB
+        StatusText = "Ready.";
         Paths.CollectionChanged += (_, _) => ScanCommand.NotifyCanExecuteChanged();
         Groups.CollectionChanged += (_, _) => OnPropertyChanged(nameof(GroupsVisibility));
     }

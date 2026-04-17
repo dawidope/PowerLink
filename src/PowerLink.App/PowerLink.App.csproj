@@ -12,6 +12,12 @@
     <WindowsPackageType>None</WindowsPackageType>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- C# 13 partial properties — required for the AOT-friendly
+         [ObservableProperty] partial-property syntax in our ViewModels.
+         CommunityToolkit.Mvvm 8.4.x docs explicitly recommend `preview`
+         (rather than `13`) so its source generator emits partial-property
+         implementations instead of falling back to field-style. -->
+    <LangVersion>preview</LangVersion>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <DefaultLanguage>en-US</DefaultLanguage>
@@ -23,7 +29,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4188" />
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Win32Exception = System.ComponentModel.Win32Exception;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
 using PowerLink.App.Services;
@@ -18,14 +18,14 @@ public partial class SettingsViewModel : ObservableObject
     public ObservableCollection<ShellVerbViewModel> DropVerbs { get; } = new();
     public ObservableCollection<ShellVerbViewModel> ModernVerbs { get; } = new();
 
-    [ObservableProperty] private string _cliPath = string.Empty;
-    [ObservableProperty] private string _appPath = string.Empty;
-    [ObservableProperty] private string? _pickedPathText;
-    [ObservableProperty] private string? _operationStatus;
-    [ObservableProperty] private string? _overlayStatus;
-    [ObservableProperty] private string? _dropStatus;
-    [ObservableProperty] private string? _modernStatus;
-    [ObservableProperty] private bool _groupedLayout;
+    [ObservableProperty] public partial string CliPath { get; set; }
+    [ObservableProperty] public partial string AppPath { get; set; }
+    [ObservableProperty] public partial string? PickedPathText { get; set; }
+    [ObservableProperty] public partial string? OperationStatus { get; set; }
+    [ObservableProperty] public partial string? OverlayStatus { get; set; }
+    [ObservableProperty] public partial string? DropStatus { get; set; }
+    [ObservableProperty] public partial string? ModernStatus { get; set; }
+    [ObservableProperty] public partial bool GroupedLayout { get; set; }
 
     // Populated in Refresh() with a non-empty message when the current machine
     // can't register the modern menu package (Windows 10 doesn't expose the
@@ -33,7 +33,7 @@ public partial class SettingsViewModel : ObservableObject
     // Bound to the InfoBar in the Modern menu Settings section.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ModernRequirementsVisibility))]
-    private string? _modernRequirementsWarning;
+    public partial string? ModernRequirementsWarning { get; set; }
 
     public Visibility ModernRequirementsVisibility =>
         string.IsNullOrEmpty(ModernRequirementsWarning) ? Visibility.Collapsed : Visibility.Visible;
@@ -42,7 +42,7 @@ public partial class SettingsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(PickedVisibility))]
     [NotifyPropertyChangedFor(nameof(NoPickVisibility))]
     [NotifyCanExecuteChangedFor(nameof(ClearPickCommand))]
-    private bool _hasPicked;
+    public partial bool HasPicked { get; set; }
 
     public Visibility PickedVisibility => HasPicked ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NoPickVisibility => HasPicked ? Visibility.Collapsed : Visibility.Visible;
@@ -54,6 +54,12 @@ public partial class SettingsViewModel : ObservableObject
 
     public SettingsViewModel()
     {
+        // Defensive defaults: Refresh() below replaces both with detected
+        // paths, but a partial-property without an implicit-default init
+        // would leave them null until then.
+        CliPath = string.Empty;
+        AppPath = string.Empty;
+
         foreach (var verb in ShellExtensionService.AllVerbs)
             Verbs.Add(new ShellVerbViewModel { Verb = verb });
         foreach (var verb in ShellExtensionService.OverlayVerbs)
