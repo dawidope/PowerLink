@@ -7,15 +7,6 @@ on:
 permissions:
   contents: write
 
-# GitHub deprecates Node.js 20 on the Actions runner in 2026 (default flips
-# to Node 24 on June 2 2026, Node 20 removed Sep 16 2026). actions/checkout
-# and actions/setup-dotnet are bumped to v5 (native Node 24); for the other
-# actions we still use, no Node-24-native major has shipped yet, so we opt
-# them in here to keep the runner from emitting deprecation annotations on
-# every release.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-
 jobs:
   build:
     runs-on: windows-latest
@@ -38,7 +29,7 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Add MSBuild to PATH
-        uses: microsoft/setup-msbuild@v2
+        uses: microsoft/setup-msbuild@v3
 
       - name: Restore
         run: dotnet restore PowerLink.slnx
@@ -101,7 +92,7 @@ jobs:
           $zip = "PowerLink-${{ steps.ver.outputs.version }}-${{ matrix.suffix }}.zip"
           Compress-Archive -Path artifacts/${{ matrix.suffix }}/* -DestinationPath $zip -CompressionLevel Optimal
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.suffix }}
           path: PowerLink-*.zip
@@ -111,12 +102,12 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v6
         with:
           path: dist
           merge-multiple: true
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: dist/PowerLink-*.zip
           draft: ${{ contains(github.ref_name, '-') }}
