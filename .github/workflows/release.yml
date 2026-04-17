@@ -7,6 +7,15 @@ on:
 permissions:
   contents: write
 
+# GitHub deprecates Node.js 20 on the Actions runner in 2026 (default flips
+# to Node 24 on June 2 2026, Node 20 removed Sep 16 2026). actions/checkout
+# and actions/setup-dotnet are bumped to v5 (native Node 24); for the other
+# actions we still use, no Node-24-native major has shipped yet, so we opt
+# them in here to keep the runner from emitting deprecation annotations on
+# every release.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   build:
     runs-on: windows-latest
@@ -22,9 +31,9 @@ jobs:
             suffix: win-x64-selfcontained
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
 
