@@ -127,6 +127,11 @@ Verbs: Pick as link source, Drop as hardlink here, Drop as junction here, Show h
 | `clone <source> <dest> [--dry-run]` | Mirror a folder or link a single file into the destination. |
 | `pick <path>` | Remember a path as the source for a later `drop`. |
 | `drop <target>` | Materialize the picked source at `<target>` (file = one hardlink, folder = tree). |
+| `drop-junction <target>` | Like `drop`, but materializes the picked folder as a junction at `<target>` (folders only). |
+| `junction create <link> <target> [--force]` | Create a directory junction. `--force` allows a dangling target. |
+| `junction info <path>` | Print a junction's target and state. Exit `0` = OK, `2` = dangling, `1` = not a junction / error. |
+| `junction repair <path> <new-target> [--force]` | Rewrite an existing junction's target in place. |
+| `junction delete <path>` | Remove a junction. The target directory is **not** touched; refuses non-junctions. |
 | `show-links <file>` | List every path on the volume sharing this file's data. |
 | `install-overlay <dll-path>` | Register the overlay handler in HKLM. **Admin required.** |
 | `uninstall-overlay` | Remove the overlay handler. **Admin required.** |
