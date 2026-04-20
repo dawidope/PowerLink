@@ -147,10 +147,37 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+
       - uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
+
+      - name: Extract curated release notes from CHANGELOG.md
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          # Pull the section whose ## header contains the version string.
+          # Keeps printing lines until the next ## header, a --- horizontal
+          # rule (used as the changelog's footer separator), or EOF. If no
+          # section matches we leave release-body.md empty and rely on
+          # action-gh-release's auto-generated notes alone.
+          awk -v pat="$VERSION" '
+            /^## / {
+              if (matched) exit
+              if (index($0, pat) > 0) { matched = 1; next }
+            }
+            matched && /^---[[:space:]]*$/ { exit }
+            matched { print }
+          ' CHANGELOG.md > release-body.md
+
+          if [ ! -s release-body.md ]; then
+            echo "::warning::No CHANGELOG.md section found for $VERSION — release body will be auto-generated only."
+          else
+            echo "Extracted $(wc -l < release-body.md) lines for $VERSION:"
+            head -20 release-body.md
+          fi
 
       - uses: softprops/action-gh-release@v3
         with:
@@ -160,6 +187,7 @@ jobs:
             dist/*.nupkg
             dist/releases.win.json
             dist/assets.win.json
+          body_path: release-body.md
           draft: ${{ contains(github.ref_name, '-') }}
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
