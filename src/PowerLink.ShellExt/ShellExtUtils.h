@@ -47,4 +47,15 @@ namespace PowerLink::ShellExtUtils
         const std::wstring& exe,
         const std::wstring& args,
         const std::wstring& workDir);
+
+    // Compute the HRESULT that IContextMenu::QueryContextMenu must return
+    // given the largest command-id offset (relative to idCmdFirst) we
+    // actually inserted a menu item at. The contract is "max offset used
+    // + 1" — NOT the count of items added. Returning the wrong number
+    // (as DropHandler did through v0.4.1) causes Windows to advance the
+    // next chained handler's idCmdFirst incorrectly, producing a command-ID
+    // collision and routing clicks on our visible labels to that other
+    // handler. `anyInserted=false` (no items added) must return a zero
+    // HRESULT so the shell knows we contributed nothing.
+    HRESULT QueryContextMenuHResult(UINT maxOffsetUsed, bool anyInserted);
 }

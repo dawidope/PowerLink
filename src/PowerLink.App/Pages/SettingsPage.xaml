@@ -28,7 +28,7 @@
                 <StackPanel Spacing="12">
                     <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Explorer context menu"/>
                     <TextBlock TextWrapping="Wrap" Opacity="0.75"
-                               Text="Choose which PowerLink entries to add to the right-click menu. Every verb here works with NTFS hardlinks (one file, multiple names — not copies, not symlinks). Per-user registry, no admin. On Windows 11 these appear under 'Show more options'."/>
+                               Text="Choose which PowerLink entries to add to the right-click menu. Verbs cover NTFS hardlinks (one file, multiple names — not copies) and directory junctions (folder pointers — no admin needed). Per-user registry, no admin. On Windows 11 these appear under 'Show more options'."/>
 
                     <ToggleSwitch IsOn="{x:Bind ViewModel.GroupedLayout, Mode=TwoWay}"
                                   Header="Group under a single 'PowerLink' submenu"
@@ -111,7 +111,7 @@
                 <StackPanel Spacing="12">
                     <TextBlock Style="{ThemeResource SubtitleTextBlockStyle}" Text="Drag-and-drop actions"/>
                     <TextBlock TextWrapping="Wrap" Opacity="0.75"
-                               Text="Right-drag files or folders onto a folder and pick a PowerLink action from the menu. One DLL exposes 'Hardlink here' (for files) and 'Clone tree here' (for folders). Per-user HKCU — no admin."/>
+                               Text="Right-drag files or folders onto a folder and pick a PowerLink action from the menu. One DLL exposes 'Hardlink here' (for files), 'Clone tree here' (for folders), and 'Junction here pointing at source' (for folders). Per-user HKCU — no admin."/>
 
                     <ItemsControl ItemsSource="{x:Bind ViewModel.DropVerbs, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>

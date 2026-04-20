@@ -19,21 +19,25 @@ namespace
     constexpr ModernAction kAllActions[] = {
         ModernAction::Pick,
         ModernAction::Drop,
+        ModernAction::DropJunction,
         ModernAction::ShowLinks,
         ModernAction::Inspect,
         ModernAction::Dedup,
         ModernAction::Clone,
+        ModernAction::Junction,
     };
 
     const ActionInfo& Info(ModernAction a)
     {
         static const ActionInfo infos[] = {
-            { L"Pick as link source",      L"Remember this path as the source for a later Drop",                true,  L"pick \"%s\"",       true,  ActionTargets::AnyFileOrFolder },
-            { L"Drop as hardlink here",    L"Make a hardlink (file) or a tree of hardlinks (folder) from the picked source", true,  L"drop \"%s\"",      false, ActionTargets::FolderOnly },
-            { L"Show hardlinks",           L"List every path on this volume sharing this file's data",          true,  L"show-links \"%s\"", false, ActionTargets::FileOnly },
-            { L"Inspect for hardlinks",    L"Open the Inspector with this folder",                              false, L"--inspect \"%s\"",  false, ActionTargets::FolderOnly },
-            { L"Deduplicate folder",       L"Open the Deduplicate page with this folder added",                 false, L"--dedup \"%s\"",    false, ActionTargets::FolderOnly },
-            { L"Clone folder (hardlinks)", L"Mirror folder tree as hardlinks — same volume only",               false, L"--clone \"%s\"",    false, ActionTargets::FolderOnly },
+            { L"Pick as link source",      L"Remember this path as the source for a later Drop",                true,  L"pick \"%s\"",          true,  ActionTargets::AnyFileOrFolder },
+            { L"Drop as hardlink here",    L"Make a hardlink (file) or a tree of hardlinks (folder) from the picked source", true,  L"drop \"%s\"",          false, ActionTargets::FolderOnly },
+            { L"Drop as junction here",    L"Create a junction here pointing at the picked folder",             true,  L"drop-junction \"%s\"", false, ActionTargets::FolderOnly },
+            { L"Show hardlinks",           L"List every path on this volume sharing this file's data",          true,  L"show-links \"%s\"",    false, ActionTargets::FileOnly },
+            { L"Inspect for hardlinks",    L"Open the Inspector with this folder",                              false, L"--inspect \"%s\"",     false, ActionTargets::FolderOnly },
+            { L"Deduplicate folder",       L"Open the Deduplicate page with this folder added",                 false, L"--dedup \"%s\"",       false, ActionTargets::FolderOnly },
+            { L"Clone folder (hardlinks)", L"Mirror folder tree as hardlinks — same volume only",               false, L"--clone \"%s\"",       false, ActionTargets::FolderOnly },
+            { L"Create junction pointing at this...", L"Open the Junction page with this folder pre-filled as the target", false, L"--junction \"%s\"",    false, ActionTargets::FolderOnly },
         };
         return infos[static_cast<size_t>(a)];
     }

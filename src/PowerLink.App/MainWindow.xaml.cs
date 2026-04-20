@@ -37,6 +37,7 @@ public sealed partial class MainWindow : Window
             LaunchMode.Dedup => (typeof(DedupPage), "dedup"),
             LaunchMode.Inspect => (typeof(InspectorPage), "inspector"),
             LaunchMode.Clone => (typeof(ClonePage), "clone"),
+            LaunchMode.Junction => (typeof(JunctionPage), "junction"),
             _ => (typeof(DedupPage), "dedup"),
         };
 

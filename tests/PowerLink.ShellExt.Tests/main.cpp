@@ -168,6 +168,52 @@ namespace
               "got: " + Narrow(dir));
     }
 
+    // ===== QueryContextMenu return-value contract (v0.4.2 regression) =====
+
+    void Test_QueryContextMenuHResult_NothingInserted_ReturnsZero()
+    {
+        const HRESULT hr = PowerLink::ShellExtUtils::QueryContextMenuHResult(0, false);
+        Check(hr == MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0),
+              "QueryContextMenuHResult with no items returns zero HRESULT");
+    }
+
+    void Test_QueryContextMenuHResult_OneAtOffsetZero_ReturnsOne()
+    {
+        // CMD_HARDLINK = 0 alone: max offset 0, count 1 — coincidentally the
+        // pre-v0.4.2 "count" formula yielded the same 1, which is why
+        // hardlink drops happened to work despite the bug.
+        const HRESULT hr = PowerLink::ShellExtUtils::QueryContextMenuHResult(0, true);
+        Check(hr == MAKE_HRESULT(SEVERITY_SUCCESS, 0, 1),
+              "QueryContextMenuHResult with item at offset 0 returns 1");
+    }
+
+    void Test_QueryContextMenuHResult_OneAtOffsetOne_ReturnsTwo()
+    {
+        // CMD_CLONE = 1 alone — this is the case that pre-v0.4.2 returned
+        // 1 (count) instead of 2 (max+1) and caused the 7-Zip collision.
+        const HRESULT hr = PowerLink::ShellExtUtils::QueryContextMenuHResult(1, true);
+        Check(hr == MAKE_HRESULT(SEVERITY_SUCCESS, 0, 2),
+              "QueryContextMenuHResult with item at offset 1 returns 2 (v0.4.2 regression)");
+    }
+
+    void Test_QueryContextMenuHResult_OneAtOffsetTwo_ReturnsThree()
+    {
+        // CMD_JUNCTION = 2 alone — v0.5 adds this; any regression to the
+        // "return count" formula would make this return 1 instead of 3.
+        const HRESULT hr = PowerLink::ShellExtUtils::QueryContextMenuHResult(2, true);
+        Check(hr == MAKE_HRESULT(SEVERITY_SUCCESS, 0, 3),
+              "QueryContextMenuHResult with item at offset 2 returns 3");
+    }
+
+    void Test_QueryContextMenuHResult_CloneAndJunction_ReturnsThree()
+    {
+        // Folder drop in v0.5 inserts both CMD_CLONE (1) and CMD_JUNCTION (2);
+        // max offset is 2, so max+1 = 3. Count would be 2.
+        const HRESULT hr = PowerLink::ShellExtUtils::QueryContextMenuHResult(2, true);
+        Check(hr == MAKE_HRESULT(SEVERITY_SUCCESS, 0, 3),
+              "QueryContextMenuHResult with both CMD_CLONE + CMD_JUNCTION returns 3");
+    }
+
     // No reliable cross-machine way to force GetModuleFileNameW truncation
     // from a unit test (we can't choose where the test exe was built or
     // how long its install path is). We DO assert that the implementation
@@ -211,6 +257,12 @@ int main()
 
     Test_GetModuleDir_NullModule_ReturnsExeDir();
     Test_GetModuleDir_NonEmptyResult_PointsToExistingDir();
+
+    Test_QueryContextMenuHResult_NothingInserted_ReturnsZero();
+    Test_QueryContextMenuHResult_OneAtOffsetZero_ReturnsOne();
+    Test_QueryContextMenuHResult_OneAtOffsetOne_ReturnsTwo();
+    Test_QueryContextMenuHResult_OneAtOffsetTwo_ReturnsThree();
+    Test_QueryContextMenuHResult_CloneAndJunction_ReturnsThree();
 
     std::printf("\n--------------------------------\n");
     std::printf("Result: %d passed, %d failed\n", g_passes, g_failures);

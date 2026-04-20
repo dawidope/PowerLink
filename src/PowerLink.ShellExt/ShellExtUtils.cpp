@@ -154,4 +154,11 @@ namespace PowerLink::ShellExtUtils
         CloseHandle(pi.hProcess);
         return true;
     }
+
+    HRESULT QueryContextMenuHResult(UINT maxOffsetUsed, bool anyInserted)
+    {
+        return anyInserted
+            ? MAKE_HRESULT(SEVERITY_SUCCESS, 0, maxOffsetUsed + 1)
+            : MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
+    }
 }

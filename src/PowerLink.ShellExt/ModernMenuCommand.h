@@ -10,10 +10,12 @@ enum class ModernAction
 {
     Pick,
     Drop,
+    DropJunction,
     ShowLinks,
     Inspect,
     Dedup,
     Clone,
+    Junction,
 };
 
 class ModernSubCommand : public IExplorerCommand
