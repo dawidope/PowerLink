@@ -24,13 +24,15 @@ PowerLink starts narrow: point it at a folder of models, it finds the duplicates
 
 **Clone.** Mirror a directory tree — every file in the destination is a hardlink back to the source. Zero extra bytes. Same-volume only (NTFS hardlink constraint).
 
-**Inspect.** Read-only scan that lists every hardlink group in a folder, including paths that point outside the scanned tree. Useful before you delete something you think is a "copy".
+**Junction.** Create a directory junction — a folder pointer. The junction folder appears at one path, but its contents come from the target. No admin needed, no Developer Mode (unlike symlinks). Useful for redirecting a folder onto another disk without moving data. Inspector lists existing junctions in scanned trees and flags dangling ones.
+
+**Inspect.** Read-only scan that lists every hardlink group AND every junction in a folder, including paths that point outside the scanned tree. Useful before you delete something you think is a "copy" or rename a folder that has live junctions pointing at it.
 
 **Show links.** Given any file, enumerate every name on the volume that points at the same data. Catches forgotten hardlinks.
 
 **Spot hardlinks at a glance.** An optional overlay handler draws a small badge on the icon of any file that's a hardlink (i.e. has more than one name on disk). Works like the OneDrive or Dropbox sync badges — you see it in every Explorer view without having to open a tool. Install is opt-in and admin-only because Windows reads overlay handlers from HKLM.
 
-All of this is driven from a WinUI 3 app and a matching CLI. The shell extension plugs the same operations into Explorer — classic right-click menu, drag-and-drop handler, Windows 11 top-section menu, plus the overlay badge above.
+All of this is driven from a WinUI 3 app and a matching CLI. The shell extension plugs the same operations into Explorer — classic right-click menu, drag-and-drop handler (now grouped under a single "PowerLink" submenu), Windows 11 top-section menu, plus the overlay badge above.
 
 ---
 
@@ -95,13 +97,13 @@ No background service, no registry writes until you opt into shell integration f
 
 All four extension surfaces are off by default. Each one is a separate checkbox in Settings; install only what you want.
 
-**Classic context menu** (per-user, no admin). Adds up to six PowerLink verbs to the right-click menu. On Windows 11 they appear under "Show more options" unless you also install the modern menu below. Two layouts:
+**Classic context menu** (per-user, no admin). Adds up to eight PowerLink verbs to the right-click menu. On Windows 11 they appear under "Show more options" unless you also install the modern menu below. Two layouts:
 - **Flat** — each verb is its own top-level entry.
 - **Grouped** — a single "PowerLink" cascading submenu; only verbs relevant to the current selection type appear inside.
 
-Verbs: Pick as link source, Drop as hardlink here, Show hardlinks, Inspect for hardlinks, Deduplicate folder, Clone folder (hardlinks).
+Verbs: Pick as link source, Drop as hardlink here, Drop as junction here, Show hardlinks, Inspect for hardlinks, Deduplicate folder, Clone folder (hardlinks), Create junction pointing at this folder.
 
-**Drag-and-drop handler** (per-user, no admin). Right-drag files/folders onto a folder, release: a popup offers "Hardlink here" (for files) and "Clone tree here" (for folders). Multi-selection and cross-volume errors are handled inline.
+**Drag-and-drop handler** (per-user, no admin). Right-drag files/folders onto a folder, release: a single "PowerLink" submenu cascades to "Hardlink here" (files), "Clone tree here (hardlinks)" (folders), and "Junction here" (folders). Multi-selection and cross-volume errors are handled inline.
 
 **Windows 11 modern menu** — _experimental_ (per-user, no admin, but **Developer Mode required**). Adds a "PowerLink" submenu to the top section of the Win11 right-click menu, so you don't need the "Show more options" click. Uses an unsigned sparse MSIX package; Developer Mode is what lets it register without a signing certificate.
 
@@ -176,7 +178,7 @@ msbuild tests/PowerLink.ShellExt.Tests/PowerLink.ShellExt.Tests.vcxproj -p:Confi
 .\tests\PowerLink.ShellExt.Tests\x64\Debug\PowerLink.ShellExt.Tests.exe
 ```
 
-Integration tests that load the native DLL skip silently if `PowerLink.ShellExt.dll` hasn't been built for the current configuration. The native test exe runs against extracted helpers in `ShellExtUtils.cpp` (FormatArgs, GetModuleDir, SafeDecrement, ClampedSkip) and is also wired into CI (`release.yml` runs it before any publish step).
+Integration tests that load the native DLL skip silently if `PowerLink.ShellExt.dll` hasn't been built for the current configuration. The native test exe runs against extracted helpers in `ShellExtUtils.cpp` (FormatArgs, GetModuleDir, SafeDecrement, ClampedSkip, QueryContextMenuHResult) and is also wired into CI (`release.yml` runs it before any publish step).
 
 ---
 
@@ -190,7 +192,7 @@ src/
   PowerLink.ShellExt/     — native C++ COM DLL: overlay handler, drop handler, Win11 modern menu command, plus
                             `ShellExtUtils.{h,cpp}` with the testable helpers (FormatArgs, GetModuleDir, etc.)
 tests/
-  PowerLink.Core.Tests/   — xUnit unit + integration tests against the C# engine (~60 at time of writing)
+  PowerLink.Core.Tests/   — xUnit unit + integration tests against the C# engine (~85 at time of writing)
   PowerLink.ShellExt.Tests/ — framework-free C++ console exe exercising the ShellExt utility helpers
 ```
 
@@ -207,7 +209,7 @@ Replacement is atomic against partial failure: each duplicate is renamed to a `.
 - **Not signed.** The shell extension DLL and the sparse MSIX package are both unsigned. Windows will tolerate the overlay handler and drag-drop handler; the modern menu package requires Developer Mode.
 - **ARM64 is compile-only.** The vcxproj has ARM64 configurations and the build graph is parameterised, but nobody has run the result on an ARM64 machine. Expect rough edges.
 - **15 overlay slots.** Windows loads only the first 15 overlay handlers in alphabetical order. PowerLink registers with a leading-space name to sort first, and asks for confirmation before installing if your system already has 14+ handlers.
-- **Unsupported:** symlinks, junctions, cross-volume operations, ReFS.
+- **Unsupported:** symlinks, cross-volume hardlinks, ReFS. Junctions are supported but Smart Move (auto-update junctions when their target is renamed) is not — moving a target out from under a junction leaves it dangling, surfaced in the Inspector with a warning.
 - **Dedup verify trusts mtime by default.** Between scan and apply, every action runs a tiered check: hard identity (size, NTFS file index, volume serial — catches the file being replaced or moved out from under us) plus a soft mtime check that triggers a full content re-hash if either file was touched since the scan. The common case (no concurrent writes) costs only a `GetFileInformationByHandle` per file. If you don't trust mtime — e.g. a sync tool restored it after writing — tick "Re-verify file contents before deleting" on the Deduplicate page (or pass `--verify-content` to the CLI) to force a re-hash on every action. Without that, a stealthy in-place rewrite that also restored the original mtime would slip past.
 - **Not in PowerToys yet.** Long-term target is to land this as a PowerToys module (see [#2527](https://github.com/microsoft/PowerToys/issues/2527) and friends). For now it's a standalone project in the same stack (WinUI 3 + C++/COM + .NET 8) so that migration is plausible later.
 
@@ -217,7 +219,7 @@ Replacement is atomic against partial failure: each duplicate is renamed to a `.
 
 Nothing is committed to a date — this is the direction of travel, ordered roughly by how likely I am to tackle it next.
 
-**Symlinks and junctions.** Junctions are the directory-equivalent of hardlinks and don't need admin, so they slot naturally into the same UI. Symlinks need UAC or Developer Mode (`SeCreateSymbolicLinkPrivilege`), but they're the only way to link across volumes and to non-existent targets, so worth supporting with a clear "this will prompt for admin" warning. Also: Smart Move — update existing junctions/symlinks when their target is renamed or moved.
+**Symlinks and Smart Move.** Junctions are done — directory pointers, no admin, full Explorer integration, Inspector listing, Repair/Delete from the App. Symlinks are next: they need UAC or Developer Mode (`SeCreateSymbolicLinkPrivilege`), but they're the only way to link across volumes and to non-existent targets, so worth supporting with a clear "this will prompt for admin" warning. After that: Smart Move — auto-update existing junctions and symlinks when their target is renamed or moved (today's dangling-junction warning in the Inspector would become "PowerLink fixed it for you").
 
 **Advanced copy operations.** Smart Copy (mirror a tree while preserving its internal hardlink groups, not just pretending each file is unique), DeLorean Copy (incremental backups — new snapshot only uses disk for files that changed, everything else hardlinks back to the previous snapshot), Smart Mirror (two-way sync that keeps hardlinks intact), and a Backup Mode that round-trips ACLs, alternate data streams, and EFS-encrypted files.
 
