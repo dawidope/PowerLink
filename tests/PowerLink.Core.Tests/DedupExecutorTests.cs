@@ -344,6 +344,44 @@ public class DedupExecutorTests
         Assert.Equal(mutated, File.ReadAllBytes(dupPath));
     }
 
+    [Fact]
+    public async Task Execute_AlwaysVerifyContent_DetectsCanonicalContentSwapWithRestoredMtime()
+    {
+        using var temp = new TempDirectory();
+        var content = new byte[4096];
+        new Random(121).NextBytes(content);
+        temp.CreateFile("a/f.bin", content);
+        temp.CreateFile("b/f.bin", content);
+
+        var scanner = new FileScanner();
+        var records = await scanner.ScanAsync(new[] { temp.Path });
+        var scanResult = await new DedupEngine().AnalyzeAsync(records);
+        var plan = DedupEngine.CreatePlan(scanResult);
+        Assert.Single(plan.Actions);
+        var canonPath = plan.Actions[0].CanonicalPath;
+        var dupPath = plan.Actions[0].DuplicatePath;
+        var canonRecord = records.First(r => r.FullPath == canonPath);
+
+        // Same stealth scenario but on the canonical side: someone rewrote
+        // the canonical bytes and restored its mtime. Without
+        // AlwaysVerifyContent we'd happily delete the duplicate and hardlink
+        // it to the corrupted canonical, propagating bad data. With
+        // AlwaysVerifyContent on, the canonical re-hash catches it.
+        var mutated = new byte[content.Length];
+        new Random(122).NextBytes(mutated);
+        File.WriteAllBytes(canonPath, mutated);
+        File.SetLastWriteTimeUtc(canonPath, canonRecord.LastWriteTimeUtc);
+
+        var result = await new DedupExecutor().ExecuteAsync(
+            plan, options: new DedupExecutorOptions { AlwaysVerifyContent = true });
+
+        Assert.Equal(0, result.SuccessCount);
+        Assert.Equal(1, result.FailureCount);
+        Assert.Contains("Canonical content changed", result.Failures[0].Reason);
+        Assert.True(File.Exists(dupPath), "Duplicate must survive when canonical fails verify.");
+        Assert.Equal(content, File.ReadAllBytes(dupPath));
+    }
+
     // Group A — P0 #1: delete-then-hardlink atomicity.
     // Currently DedupExecutor calls File.Delete(dup) then CreateHardLink(dup,
     // canonical). If CreateHardLink throws, the duplicate is gone forever and

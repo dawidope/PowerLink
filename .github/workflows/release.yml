@@ -116,7 +116,13 @@ jobs:
 
           if ($priorCount -gt 0) {
             Write-Host "Found $priorCount prior stable release(s). Downloading latest for delta computation."
-            vpk download github --repoUrl https://github.com/${{ github.repository }}
+            # Pass --token explicitly rather than relying on vpk's implicit
+            # GH_TOKEN env-var lookup. Future vpk versions may change which
+            # env name they consult, and falling back to anonymous would
+            # silently degrade us to the 60/h shared rate limit.
+            vpk download github `
+              --repoUrl https://github.com/${{ github.repository }} `
+              --token $env:GH_TOKEN
             if ($LASTEXITCODE -ne 0) {
               Write-Error "vpk download failed despite prior stable release(s) existing on GitHub. Aborting to avoid shipping a release whose delta would be missing or corrupt."
               exit 1
