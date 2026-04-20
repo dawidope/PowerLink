@@ -36,12 +36,19 @@ public static class VelopackShellShim
             if (IsJunctionPointingTo(StableShellExtDir, currentAppFolder))
                 return;
 
+            // Refuse to touch a real (non-reparse) directory: a user or
+            // unrelated installer may have created it. Surface this loudly
+            // instead of letting Directory.Delete throw an opaque IOException
+            // from inside an install/update hook with no UI.
+            if (!IsReparsePoint(StableShellExtDir))
+                throw new InvalidOperationException(
+                    $"Cannot retarget shell-ext junction: '{StableShellExtDir}' " +
+                    "exists as a real directory, not a junction. " +
+                    "Remove it manually and re-run the app.");
+
             // Junction points delete via Directory.Delete without `recursive`
             // because the delete unlinks the reparse point, not the target's
-            // contents. For a real directory this would only succeed if it's
-            // empty — which is what we want, since we never want to silently
-            // wipe a populated non-junction folder a user might have placed
-            // here by hand.
+            // contents.
             Directory.Delete(StableShellExtDir, recursive: false);
         }
 
@@ -80,8 +87,7 @@ public static class VelopackShellShim
     {
         try
         {
-            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0)
-                return false;
+            if (!IsReparsePoint(path)) return false;
 
             var resolved = Directory.ResolveLinkTarget(path, returnFinalTarget: true);
             if (resolved is null) return false;
@@ -95,5 +101,28 @@ public static class VelopackShellShim
         {
             return false;
         }
+    }
+
+    private static bool IsReparsePoint(string path)
+    {
+        try
+        {
+            return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    // True when the running exe sits in a Velopack-managed install layout
+    // (Update.exe lives one folder up from the app-X.Y.Z\ that the stub
+    // launcher hands off to). Used by Program.cs to decide whether a normal
+    // cold-start should re-ensure the junction.
+    public static bool IsRunningFromVelopackInstall(string baseDirectory)
+    {
+        var parent = Directory.GetParent(baseDirectory);
+        if (parent is null) return false;
+        return File.Exists(Path.Combine(parent.FullName, "Update.exe"));
     }
 }

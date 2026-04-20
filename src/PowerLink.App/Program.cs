@@ -22,9 +22,17 @@ public static class Program
         // (otherwise taskbar pin would target the versioned exe rather than
         // Velopack's stable stub launcher).
         VelopackApp.Build()
-            .OnFirstRun(_ => VelopackShellShim.EnsureJunction(AppContext.BaseDirectory))
-            .OnRestarted(_ => VelopackShellShim.EnsureJunction(AppContext.BaseDirectory))
+            .OnFirstRun(_ => TryEnsureShellJunction("OnFirstRun"))
+            .OnRestarted(_ => TryEnsureShellJunction("OnRestarted"))
             .Run();
+
+        // Belt-and-suspenders: OnFirstRun and OnRestarted only fire during
+        // install/update flows. A normal cold-start with an externally deleted
+        // or stale junction (rare, but possible if the user's previous app-X
+        // folder was cleaned up by hand) would leave the shell extension
+        // pointing at nothing. Re-ensure on every Velopack-managed launch.
+        if (VelopackShellShim.IsRunningFromVelopackInstall(AppContext.BaseDirectory))
+            TryEnsureShellJunction("ColdStart");
 
         WinRT.ComWrappersSupport.InitializeComWrappers();
 
@@ -53,5 +61,33 @@ public static class Program
             new App();
         });
         return 0;
+    }
+
+    // EnsureJunction runs from Velopack install/update hooks where there is
+    // no UI to surface failures. An uncaught exception in a hook silently
+    // aborts the install — much worse than a temporarily missing shell ext.
+    // Log to a file the user can find later and let the hook keep going.
+    private static void TryEnsureShellJunction(string hookName)
+    {
+        try
+        {
+            VelopackShellShim.EnsureJunction(AppContext.BaseDirectory);
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                var logPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "PowerLink", "shell-junction-error.log");
+                Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+                File.AppendAllText(logPath,
+                    $"[{DateTime.UtcNow:O}] {hookName} EnsureJunction failed: {ex}{Environment.NewLine}");
+            }
+            catch
+            {
+                // Logging itself failed — nothing safe to do from a hook.
+            }
+        }
     }
 }
