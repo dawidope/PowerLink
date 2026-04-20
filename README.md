@@ -50,7 +50,14 @@ All of this is driven from a WinUI 3 app and a matching CLI. The shell extension
 |---|---|
 | ![Classic context menu](docs/media/context-menu-classic.png) | ![Modern Win11 menu](docs/media/context-menu-modern.png) |
 
-**Overlay badge** — the rightmost file is a hardlink and gets a small red arrow in the lower-left corner of its thumbnail, matching the shape Windows paints for shortcuts and junctions but recoloured so all three stay visually distinct:
+**Overlay badge** — PowerLink paints a small red arrow on every file that's a hardlink, re-using the shape Windows already uses for shortcuts and junctions so the three "this has an alternate origin" indicators stay visually coherent. Left to right in the screenshot:
+
+| Overlay | Meaning | Painted by |
+|---|---|---|
+| Blue arrow on folder | Junction (directory reparse point) | Windows |
+| No overlay | Regular file | — |
+| **Red arrow on file** | **Hardlink** (`nNumberOfLinks > 1`) | **PowerLink** |
+| Blue arrow on file | Shortcut (`.lnk`) | Windows |
 
 ![Overlay badge](docs/media/overlay-badge.png)
 
