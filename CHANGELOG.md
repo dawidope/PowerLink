@@ -5,6 +5,82 @@ loosely. The release workflow extracts the section matching the pushed tag
 (e.g. `v0.4.0` → `## [0.4.0]`) and uses it as the body of the GitHub release.
 The auto-generated PR/commit list still appears below it on the release page.
 
+## [0.5.0] — 2026-04-20
+
+First release that handles **directory junctions** end-to-end. Junctions
+are NTFS folder pointers — same purpose as symlinks for directories, but
+unlike symlinks they need no admin and no Developer Mode. They're the
+right tool for "make this folder appear at another path on the same
+machine," and they're now first-class citizens in PowerLink.
+
+### Added
+
+- **Junction page** (new sidebar entry between Clone and Inspector).
+  Pick a target folder, pick the parent folder where the junction
+  appears, hit Create. The link name is auto-derived from the target's
+  basename and editable. Optional "allow missing target" toggle for
+  intentional dangling junctions (deploy-script pattern).
+- **Inspector now lists junctions** alongside hardlinks. Two stacked
+  sections — `Hardlinks (N)` and `Junctions (N, X dangling)` — both
+  expandable. Each junction row shows the link path, target path, and
+  status (OK / dangling). Per-row Repair (pick a new target) and Delete
+  (removes only the reparse point — never touches the target).
+- **Explorer integration** for junctions across all three menu sites:
+  - **Classic right-click** on a folder: "PowerLink: Create junction
+    pointing at this folder" (opens the App pre-filled).
+  - **Classic right-click** on a folder when something is picked:
+    "PowerLink: Drop as junction here" (symmetric with Drop-as-hardlink).
+  - **Right-drag** a folder onto another folder: under a single
+    "PowerLink" submenu, "Junction here" appears next to "Clone tree
+    here (hardlinks)". Right-drag a file: "Hardlink here" alone.
+    The submenu groups everything under one parent so the drop menu
+    stays uncluttered next to Copy/Move/Create shortcut.
+  - **Win11 modern menu** (sparse MSIX): "Drop as junction here" and
+    "Create junction pointing at this..." added to the cascade.
+- **CLI**: `powerlink junction {create|info|delete|repair}` and
+  `powerlink drop-junction <target>`. `info` exits 0 (OK), 2 (dangling),
+  1 (error). `delete` refuses non-junctions to prevent rmdir'ing a real
+  directory by mistake. `repair` overwrites reparse data atomically.
+
+### Changed
+
+- **Drop-handler menu is now a 'PowerLink' submenu** instead of two
+  top-level entries. Single visible "PowerLink >" cascades to the
+  applicable actions for the current selection.
+- **Inspector page renamed to "Link inspector"** internally — the title
+  and intro now cover both hardlinks and junctions. Sidebar entry stays
+  "Inspector" so muscle memory still works.
+- **Settings → Explorer context menu** copy mentions junctions; the
+  drag-and-drop description lists all three drop actions.
+
+### Fixed (safety-critical)
+
+- **`scan` / `clone` / `dedup` continue to skip reparse points by default
+  — now locked in by tests.** Previous releases happened to do the right
+  thing because `EnumerationOptions.AttributesToSkip = ReparsePoint`
+  was already set, but nothing protected against a casual removal of
+  that flag. Three regression tests now cover: self-referential junction
+  cycles don't deadlock the scan, junctions inside a scanned tree
+  aren't silently followed, and clone never hardlinks content reached
+  through a junction (which would let a later dedup rewrite the
+  junction's target into a hardlink to another copy — silent semantic
+  corruption).
+
+### Internal
+
+- **`Win32Junction`** wrapper: DeviceIoControl FSCTL_SET/GET_REPARSE_POINT
+  with manual `IO_REPARSE_TAG_MOUNT_POINT` buffer layout, NT-path
+  `\??\` prefix for substitute name, dangling-target detection,
+  long-path support, UNC-target rejection (junctions can't resolve
+  network paths). 19 xUnit tests across happy/edge/error cases.
+- **`JunctionScanner`**: manual recursive walk that captures
+  reparse-point directories without descending into them. 4 tests
+  verify cycle safety + dangling detection.
+- **`QueryContextMenuHResult`** helper extracted to ShellExtUtils with
+  5 new C++ tests in the framework-free test exe — locks in the
+  "max offset + 1, NOT count" contract for the new `CMD_JUNCTION = 2`
+  offset in the drop handler.
+
 ## [0.4.2] — 2026-04-20
 
 Real fix for the "Clone tree here" issue v0.4.1 missed.
