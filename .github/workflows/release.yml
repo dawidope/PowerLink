@@ -79,20 +79,36 @@ jobs:
       - name: Pack with Velopack
         shell: pwsh
         env:
-          # Authenticate vpk's GitHub API hits so they don't fall under the
-          # 60/h anonymous rate limit shared across the runner's IP pool.
+          # Authenticate vpk's and gh's GitHub API hits so they don't fall
+          # under the 60/h anonymous rate limit shared across runner IPs.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           dotnet tool install --global vpk
-          # Pull prior release so vpk can compute a delta against it. First-ever
-          # release has nothing to download — swallow that one specific failure
-          # and let vpk pack produce a full-only release. Reset $LASTEXITCODE
-          # locally; $global: would persist past the script and fail the step.
-          vpk download github --repoUrl https://github.com/dawidope/PowerLink
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "vpk download failed (likely no prior Velopack release). Continuing with full release only."
-            $LASTEXITCODE = 0
+
+          # Decide up-front whether to ask vpk to fetch a prior release for
+          # delta computation. The previous "run vpk download and swallow any
+          # non-zero exit" pattern would have masked real failures (bad token,
+          # network blip, GitHub 5xx) and let vpk pack produce a release with
+          # a missing or corrupt delta — which then bricks updates on user
+          # machines. Pre-checking with gh keeps the failure modes separate:
+          # absence of a prior release is detected here, vpk download
+          # failures are now hard errors that fail the workflow.
+          $priorStable = gh release list --repo ${{ github.repository }} --limit 50 --json isDraft,isPrerelease,tagName |
+              ConvertFrom-Json |
+              Where-Object { -not $_.isDraft -and -not $_.isPrerelease }
+          $priorCount = ($priorStable | Measure-Object).Count
+
+          if ($priorCount -gt 0) {
+            Write-Host "Found $priorCount prior stable release(s). Downloading latest for delta computation."
+            vpk download github --repoUrl https://github.com/${{ github.repository }}
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "vpk download failed despite prior stable release(s) existing on GitHub. Aborting to avoid shipping a release whose delta would be missing or corrupt."
+              exit 1
+            }
+          } else {
+            Write-Host "No prior stable releases found on GitHub. Producing full-only release (no delta)."
           }
+
           vpk pack `
             --packId PowerLink `
             --packVersion ${{ steps.ver.outputs.version }} `
