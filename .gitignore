@@ -3,8 +3,8 @@
 ##
 ## Get latest from `dotnet new gitignore`
 
-# Claude Code local settings (per-user, not shared)
-.claude/settings.local.json
+# Claude Code local state (per-user settings, agent worktrees, etc.)
+.claude/
 
 # dotenv files
 .env
