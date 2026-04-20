@@ -24,6 +24,11 @@
                     <SymbolIcon Symbol="Folder"/>
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItem Content="Junction" Tag="junction">
+                <NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="Link"/>
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
             <NavigationViewItem Content="Inspector" Tag="inspector">
                 <NavigationViewItem.Icon>
                     <SymbolIcon Symbol="Find"/>
