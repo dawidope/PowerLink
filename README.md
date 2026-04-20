@@ -50,7 +50,7 @@ All of this is driven from a WinUI 3 app and a matching CLI. The shell extension
 |---|---|
 | ![Classic context menu](docs/media/context-menu-classic.png) | ![Modern Win11 menu](docs/media/context-menu-modern.png) |
 
-**Overlay badge** — the rightmost file is a hardlink and gets a small chain-link icon in the lower-left corner of its thumbnail:
+**Overlay badge** — the rightmost file is a hardlink and gets a small red arrow in the lower-left corner of its thumbnail, matching the shape Windows paints for shortcuts and junctions but recoloured so all three stay visually distinct:
 
 ![Overlay badge](docs/media/overlay-badge.png)
 
