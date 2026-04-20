@@ -104,6 +104,7 @@
     <ClInclude Include="HardlinkCache.h" />
     <ClInclude Include="DropHandler.h" />
     <ClInclude Include="ModernMenuCommand.h" />
+    <ClInclude Include="ShellExtUtils.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
@@ -119,6 +120,9 @@
     <ClCompile Include="HardlinkDetection.cpp" />
     <ClCompile Include="DropHandler.cpp" />
     <ClCompile Include="ModernMenuCommand.cpp" />
+    <ClCompile Include="ShellExtUtils.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="PowerLink.ShellExt.def" />

@@ -2,6 +2,7 @@
 #include "HardlinkOverlayHandler.h"
 #include "DropHandler.h"
 #include "ModernMenuCommand.h"
+#include "ShellExtUtils.h"
 
 namespace
 {
@@ -64,10 +65,13 @@ namespace
 
         IFACEMETHODIMP LockServer(BOOL lock) override
         {
+            // Increment is unconditional; decrement goes through SafeDecrement
+            // so an unbalanced LockServer(FALSE) from a defective COM client
+            // can't drive the global ref count negative or underflow.
             if (lock)
                 g_dllRefCount.fetch_add(1, std::memory_order_relaxed);
             else
-                g_dllRefCount.fetch_sub(1, std::memory_order_relaxed);
+                PowerLink::ShellExtUtils::SafeDecrement(g_dllRefCount);
             return S_OK;
         }
 

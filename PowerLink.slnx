@@ -9,5 +9,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PowerLink.Core.Tests/PowerLink.Core.Tests.csproj" />
+    <Project Path="tests/PowerLink.ShellExt.Tests/PowerLink.ShellExt.Tests.vcxproj" Id="4c1a2d7e-9b3f-4e81-a6f2-8d5c7b2e4f91" />
   </Folder>
 </Solution>

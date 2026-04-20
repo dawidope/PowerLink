@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "DropHandler.h"
+#include "ShellExtUtils.h"
 
 namespace
 {
@@ -28,19 +29,9 @@ namespace
 
     std::wstring ResolveCliPath()
     {
-        WCHAR dll[MAX_PATH]{};
-        if (GetModuleFileNameW(g_hModule, dll, MAX_PATH) == 0) return L"";
-
-        // Replace basename with PowerLink.Cli.exe.
-        WCHAR* sep = nullptr;
-        for (WCHAR* p = dll; *p; ++p)
-            if (*p == L'\\' || *p == L'/') sep = p;
-        if (sep == nullptr) return L"";
-        *(sep + 1) = L'\0';
-
-        std::wstring cli = dll;
-        cli += L"PowerLink.Cli.exe";
-        return cli;
+        const std::wstring dir = PowerLink::ShellExtUtils::GetModuleDir(g_hModule);
+        if (dir.empty()) return L"";
+        return dir + L"PowerLink.Cli.exe";
     }
 
     void ReportError(HWND hwnd, PCWSTR title, PCWSTR body)
@@ -254,6 +245,13 @@ IFACEMETHODIMP PowerLinkDropHandler::InvokeCommand(CMINVOKECOMMANDINFO* pici)
             return S_OK;
         }
 
+        // Use the same breakaway-aware spawn path as ModernMenuCommand —
+        // when the DLL is hosted in the packaged dllhost.exe surrogate, a
+        // bare CreateProcessW inherits the package identity and the
+        // unpackaged Cli exits with 0x80070032 (we documented the diagnosis
+        // in ModernMenuCommand.cpp's LaunchExe comment block). The previous
+        // implementation here silently failed on machines that surfaced the
+        // modern (AppX) registration path.
         size_t launched = 0;
         for (const auto& src : _sourceDirs)
         {
@@ -261,21 +259,9 @@ IFACEMETHODIMP PowerLinkDropHandler::InvokeCommand(CMINVOKECOMMANDINFO* pici)
             if (!dest.empty() && dest.back() != L'\\') dest += L'\\';
             dest += BaseName(src.c_str());
 
-            std::wstring cmdline = L"\"" + cli + L"\" clone \"" + src + L"\" \"" + dest + L"\"";
-
-            STARTUPINFOW si{ sizeof(si) };
-            PROCESS_INFORMATION pi{};
-            // Mutable buffer required by CreateProcessW.
-            std::vector<wchar_t> buf(cmdline.begin(), cmdline.end());
-            buf.push_back(L'\0');
-
-            if (CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE,
-                               CREATE_NEW_CONSOLE, nullptr, nullptr, &si, &pi))
-            {
-                CloseHandle(pi.hThread);
-                CloseHandle(pi.hProcess);
+            const std::wstring args = L"clone \"" + src + L"\" \"" + dest + L"\"";
+            if (PowerLink::ShellExtUtils::LaunchProcessWithBreakaway(cli, args, std::wstring{}))
                 launched++;
-            }
         }
 
         if (launched == 0)

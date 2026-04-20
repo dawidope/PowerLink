@@ -24,6 +24,22 @@ jobs:
       - name: Restore
         run: dotnet restore PowerLink.slnx
 
+      - name: Build and run ShellExt utility tests
+        shell: pwsh
+        run: |
+          msbuild tests/PowerLink.ShellExt.Tests/PowerLink.ShellExt.Tests.vcxproj `
+            -p:Configuration=Release -p:Platform=x64 -nologo -v:minimal
+          $exe = "tests/PowerLink.ShellExt.Tests/x64/Release/PowerLink.ShellExt.Tests.exe"
+          if (-not (Test-Path $exe)) {
+            Write-Error "Test exe not produced at $exe"
+            exit 1
+          }
+          & $exe
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "ShellExt utility tests failed (exit $LASTEXITCODE)."
+            exit 1
+          }
+
       - name: Publish App
         run: >
           dotnet publish src/PowerLink.App/PowerLink.App.csproj

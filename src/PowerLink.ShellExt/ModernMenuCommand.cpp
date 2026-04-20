@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "ModernMenuCommand.h"
+#include "ShellExtUtils.h"
 
 namespace
 {
@@ -46,14 +47,7 @@ namespace
 
     std::wstring DllDir()
     {
-        WCHAR path[MAX_PATH]{};
-        if (GetModuleFileNameW(g_hModule, path, MAX_PATH) == 0) return L"";
-        WCHAR* sep = nullptr;
-        for (WCHAR* p = path; *p; ++p)
-            if (*p == L'\\' || *p == L'/') sep = p;
-        if (sep == nullptr) return L"";
-        *(sep + 1) = L'\0';
-        return path;
+        return PowerLink::ShellExtUtils::GetModuleDir(g_hModule);
     }
 
     bool SelectionPaths(IShellItemArray* arr, std::vector<std::wstring>& out)
@@ -121,89 +115,26 @@ namespace
     // Windows to strip package identity from the child and its entire tree,
     // producing a normal desktop process. This is Microsoft's documented fix
     // for "unpackaged app spawned from packaged host".
+    // Thin wrapper around the shared spawn helper that adds DebugLog-only
+    // tracing. The actual breakaway / CreateProcess plumbing lives in
+    // ShellExtUtils so DropHandler can use the same code path (it has the
+    // same packaged-surrogate identity-leak problem when starting CLI).
     bool LaunchExe(const std::wstring& exe, const std::wstring& args, const std::wstring& workDir)
     {
-        // Spawn the target through cmd.exe /c start — this severs the MSIX
-        // activation tracker's association between our package folder and
-        // child process creation. A direct CreateProcessW on PowerLink.App.exe
-        // exits with 0x80070032 because Windows detects the exe sits inside a
-        // registered package layout and tries packaged activation (which fails
-        // since the manifest doesn't declare App.exe as the package's Application).
-        // `start ""` = empty window title (otherwise start consumes the first
-        // quoted arg as a title), /b = no new console window.
-        WCHAR systemDir[MAX_PATH]{};
-        GetSystemDirectoryW(systemDir, MAX_PATH);
-        std::wstring cmdExe = std::wstring(systemDir) + L"\\cmd.exe";
-
-        std::wstring cmdline = L"cmd.exe /c start \"\" /b \"" + exe + L"\" " + args;
-        std::vector<wchar_t> cmdBuf(cmdline.begin(), cmdline.end());
-        cmdBuf.push_back(L'\0');
-
-        SIZE_T attrSize = 0;
-        InitializeProcThreadAttributeList(nullptr, 1, 0, &attrSize);
-        std::vector<BYTE> attrBuf(attrSize);
-        auto* attrs = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attrBuf.data());
-
-        bool attrsReady = false;
-        DWORD policy = PROCESS_CREATION_DESKTOP_APP_BREAKAWAY_ENABLE_PROCESS_TREE;
-        if (InitializeProcThreadAttributeList(attrs, 1, 0, &attrSize) &&
-            UpdateProcThreadAttribute(attrs, 0, PROC_THREAD_ATTRIBUTE_DESKTOP_APP_POLICY,
-                                      &policy, sizeof(policy), nullptr, nullptr))
-        {
-            attrsReady = true;
-        }
-
-        STARTUPINFOEXW siex{};
-        siex.StartupInfo.cb = sizeof(siex);
-        if (attrsReady) siex.lpAttributeList = attrs;
-
-        DWORD flags = CREATE_NO_WINDOW;
-        if (attrsReady) flags |= EXTENDED_STARTUPINFO_PRESENT;
-
-        PROCESS_INFORMATION pi{};
-        const BOOL ok = CreateProcessW(
-            cmdExe.c_str(), cmdBuf.data(), nullptr, nullptr, FALSE,
-            flags, nullptr,
-            workDir.empty() ? nullptr : workDir.c_str(),
-            reinterpret_cast<LPSTARTUPINFOW>(&siex), &pi);
-
-        if (attrsReady) DeleteProcThreadAttributeList(attrs);
-
+        const bool ok = PowerLink::ShellExtUtils::LaunchProcessWithBreakaway(exe, args, workDir);
         if (!ok)
         {
             WCHAR b[256]{};
             StringCchPrintfW(b, ARRAYSIZE(b),
-                L"CreateProcessW FAILED: exe=%s err=%lu", exe.c_str(), GetLastError());
+                L"LaunchProcessWithBreakaway FAILED: exe=%s err=%lu", exe.c_str(), GetLastError());
             DebugLog(b);
-            return false;
         }
-
-        // Diagnostic-only liveness probe. MUST stay under _DEBUG — a 500ms wait
-        // on the shell's UI thread (where Invoke runs) would freeze the context
-        // menu after every PowerLink click on end-user machines.
-#ifdef _DEBUG
-        WaitForSingleObject(pi.hProcess, 500);
-        DWORD exitCode = STILL_ACTIVE;
-        GetExitCodeProcess(pi.hProcess, &exitCode);
-        WCHAR b[256]{};
-        if (exitCode == STILL_ACTIVE)
-            StringCchPrintfW(b, ARRAYSIZE(b), L"  spawn OK pid=%lu, alive at 500ms", pi.dwProcessId);
-        else
-            StringCchPrintfW(b, ARRAYSIZE(b), L"  spawn OK pid=%lu, exited code=0x%08lX",
-                             pi.dwProcessId, exitCode);
-        DebugLog(b);
-#endif
-
-        CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
-        return true;
+        return ok;
     }
 
     std::wstring FormatArgs(PCWSTR tmpl, PCWSTR path)
     {
-        WCHAR buf[MAX_PATH + 64]{};
-        StringCchPrintfW(buf, ARRAYSIZE(buf), tmpl, path);
-        return buf;
+        return PowerLink::ShellExtUtils::FormatArgs(tmpl, path);
     }
 
     // Shared icon for the root + every sub-command. Lives next to the DLL
@@ -421,8 +352,8 @@ IFACEMETHODIMP ModernSubCommandEnum::Next(ULONG celt, IExplorerCommand** rgelt, 
 
 IFACEMETHODIMP ModernSubCommandEnum::Skip(ULONG celt)
 {
-    _index += celt;
-    return S_OK;
+    constexpr size_t total = ARRAYSIZE(kAllActions);
+    return PowerLink::ShellExtUtils::ClampedSkip(_index, total, celt);
 }
 
 IFACEMETHODIMP ModernSubCommandEnum::Reset()
