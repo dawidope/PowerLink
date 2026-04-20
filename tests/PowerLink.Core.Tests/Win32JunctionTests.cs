@@ -276,6 +276,35 @@ public class Win32JunctionTests
     }
 
     [Fact]
+    public void Create_FailureOnPreExistingEmptyDirectory_PreservesIt()
+    {
+        // Caller passes us an existing empty directory. If reparse-point
+        // write fails, our rollback must NOT delete the directory we did
+        // not create. Force failure by passing a UNC target that the
+        // ArgumentException check rejects after Create has already done
+        // its existence/emptiness validation but before any FS state was
+        // changed — wait, ArgumentException is thrown at the very top.
+        //
+        // Better: force WriteReparseData to fail by giving it a target the
+        // OS will reject at FSCTL time. We simulate this by passing a path
+        // long enough to exceed the reparse-buffer kernel cap (16 KB) so
+        // FSCTL_SET_REPARSE_POINT returns ERROR_INVALID_PARAMETER, which
+        // surfaces as IOException out of WriteReparseData.
+        using var temp = new TempDirectory();
+        var preExisting = temp.CreateSubDirectory("pre-existing-empty");
+        var hugeTarget = Path.Combine(temp.Path, new string('x', 8200));
+        Directory.CreateDirectory(temp.Path); // ensure parent
+
+        Assert.Throws<IOException>(() =>
+            Win32Junction.Create(preExisting, hugeTarget, allowMissingTarget: true));
+
+        // The directory we passed in must still exist — we did not create
+        // it, so we must not have deleted it.
+        Assert.True(Directory.Exists(preExisting),
+            "Pre-existing empty directory was destroyed by Create's rollback path.");
+    }
+
+    [Fact]
     public void Create_NormalizesTargetPath()
     {
         using var temp = new TempDirectory();

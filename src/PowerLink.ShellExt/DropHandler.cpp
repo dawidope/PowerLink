@@ -215,10 +215,16 @@ IFACEMETHODIMP PowerLinkDropHandler::QueryContextMenu(HMENU hMenu, UINT indexMen
     // item IDs occupy the same idCmdFirst range as if they were top-level,
     // so this is unchanged from flat-layout logic (regression-protected by
     // tests/PowerLink.ShellExt.Tests QueryContextMenuHResult cases).
-    UINT maxUsedOffsetPlusOne = 0;
+    // Track the literal max command-id offset we inserted (NOT max+1, NOT
+    // count). The ShellExtUtils helper does the +1 conversion for us — we
+    // just record what we used. Keeping these two quantities separate
+    // prevents the rename / merge regression risk that the asymmetric
+    // "store plusOne, pass minus one" pattern carried.
+    UINT maxOffset = 0;
+    bool anyInserted = false;
     auto markUsed = [&](UINT offset) {
-        const UINT plusOne = offset + 1;
-        if (plusOne > maxUsedOffsetPlusOne) maxUsedOffsetPlusOne = plusOne;
+        if (!anyInserted || offset > maxOffset) maxOffset = offset;
+        anyInserted = true;
     };
 
     HMENU childMenu = CreatePopupMenu();
@@ -269,7 +275,7 @@ IFACEMETHODIMP PowerLinkDropHandler::QueryContextMenu(HMENU hMenu, UINT indexMen
         DebugLog(L"  inserted CMD_JUNCTION at id=" + std::to_wstring(idCmdFirst + CMD_JUNCTION));
     }
 
-    if (childPos == 0)
+    if (!anyInserted)
     {
         // No applicable actions for this selection — destroy the empty popup
         // and contribute nothing to the parent menu.
@@ -295,10 +301,8 @@ IFACEMETHODIMP PowerLinkDropHandler::QueryContextMenu(HMENU hMenu, UINT indexMen
         return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
     }
 
-    DebugLog(L"  -> maxUsedOffsetPlusOne=" + std::to_wstring(maxUsedOffsetPlusOne));
-    return PowerLink::ShellExtUtils::QueryContextMenuHResult(
-        maxUsedOffsetPlusOne == 0 ? 0 : maxUsedOffsetPlusOne - 1,
-        maxUsedOffsetPlusOne != 0);
+    DebugLog(L"  -> maxOffset=" + std::to_wstring(maxOffset));
+    return PowerLink::ShellExtUtils::QueryContextMenuHResult(maxOffset, anyInserted);
 }
 
 IFACEMETHODIMP PowerLinkDropHandler::InvokeCommand(CMINVOKECOMMANDINFO* pici)
