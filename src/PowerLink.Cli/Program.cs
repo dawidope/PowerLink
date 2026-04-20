@@ -19,6 +19,7 @@ public static class Program
         root.Add(BuildPickCommand());
         root.Add(BuildDropCommand());
         root.Add(BuildShowLinksCommand());
+        root.Add(BuildJunctionCommand());
         root.Add(BuildInstallOverlayCommand());
         root.Add(BuildUninstallOverlayCommand());
         return root.Parse(args).InvokeAsync();
@@ -137,6 +138,130 @@ public static class Program
         cmd.Add(pathArg);
         cmd.SetAction((parseResult, _) => Task.FromResult(ShowLinks(parseResult.GetValue(pathArg)!)));
         return cmd;
+    }
+
+    private static Command BuildJunctionCommand()
+    {
+        var group = new Command("junction", "Create, inspect, repair, or delete NTFS directory junctions.");
+
+        // junction create <link> <target> [--force]
+        var createLink = new Argument<string>("link") { Description = "Path of the new junction (must not exist)." };
+        var createTarget = new Argument<string>("target") { Description = "Directory the junction should point at." };
+        var createForce = new Option<bool>("--force")
+        {
+            Description = "Allow creating a dangling junction whose target does not yet exist.",
+        };
+        var create = new Command("create", "Create a new directory junction.");
+        create.Add(createLink);
+        create.Add(createTarget);
+        create.Add(createForce);
+        create.SetAction((parseResult, _) => Task.FromResult(JunctionCreate(
+            parseResult.GetValue(createLink)!,
+            parseResult.GetValue(createTarget)!,
+            parseResult.GetValue(createForce))));
+        group.Add(create);
+
+        // junction info <path>
+        var infoPath = new Argument<string>("path") { Description = "Path to inspect." };
+        var info = new Command("info", "Print a junction's target and whether it is dangling.");
+        info.Add(infoPath);
+        info.SetAction((parseResult, _) => Task.FromResult(JunctionInfo(parseResult.GetValue(infoPath)!)));
+        group.Add(info);
+
+        // junction delete <path>
+        var deletePath = new Argument<string>("path") { Description = "Junction to remove (the target is NOT touched)." };
+        var delete = new Command("delete", "Remove a junction without affecting its target.");
+        delete.Add(deletePath);
+        delete.SetAction((parseResult, _) => Task.FromResult(JunctionDelete(parseResult.GetValue(deletePath)!)));
+        group.Add(delete);
+
+        // junction repair <path> <new-target>
+        var repairPath = new Argument<string>("path") { Description = "Junction whose target will be rewritten." };
+        var repairTarget = new Argument<string>("new-target") { Description = "New directory for the junction to point at." };
+        var repairForce = new Option<bool>("--force")
+        {
+            Description = "Allow repairing to a target that does not yet exist.",
+        };
+        var repair = new Command("repair", "Change an existing junction's target in place.");
+        repair.Add(repairPath);
+        repair.Add(repairTarget);
+        repair.Add(repairForce);
+        repair.SetAction((parseResult, _) => Task.FromResult(JunctionRepair(
+            parseResult.GetValue(repairPath)!,
+            parseResult.GetValue(repairTarget)!,
+            parseResult.GetValue(repairForce))));
+        group.Add(repair);
+
+        return group;
+    }
+
+    private static int JunctionCreate(string link, string target, bool force)
+    {
+        try
+        {
+            Win32Junction.Create(link, target, allowMissingTarget: force);
+            var resolvedLink = Path.GetFullPath(link);
+            var resolvedTarget = Path.GetFullPath(target);
+            Console.WriteLine($"Created junction: {resolvedLink} -> {resolvedTarget}");
+            return 0;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or DirectoryNotFoundException)
+        {
+            Console.Error.WriteLine($"junction create failed: {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int JunctionInfo(string path)
+    {
+        try
+        {
+            var info = Win32Junction.Read(path);
+            if (info is null)
+            {
+                Console.Error.WriteLine($"Not a junction: {Path.GetFullPath(path)}");
+                return 1;
+            }
+            Console.WriteLine($"Junction: {info.LinkPath}");
+            Console.WriteLine($"Target:   {info.TargetPath}");
+            Console.WriteLine($"State:    {(info.IsTargetMissing ? "DANGLING (target does not exist)" : "OK")}");
+            return info.IsTargetMissing ? 2 : 0;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException)
+        {
+            Console.Error.WriteLine($"junction info failed: {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int JunctionDelete(string path)
+    {
+        try
+        {
+            Win32Junction.Delete(path);
+            Console.WriteLine($"Deleted junction: {Path.GetFullPath(path)}");
+            return 0;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException)
+        {
+            Console.Error.WriteLine($"junction delete failed: {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int JunctionRepair(string path, string newTarget, bool force)
+    {
+        try
+        {
+            Win32Junction.Repair(path, newTarget, allowMissingTarget: force);
+            Console.WriteLine($"Repaired junction: {Path.GetFullPath(path)} -> {Path.GetFullPath(newTarget)}");
+            return 0;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or DirectoryNotFoundException)
+        {
+            Console.Error.WriteLine($"junction repair failed: {ex.Message}");
+            return 1;
+        }
     }
 
     private static Command BuildInstallOverlayCommand()
