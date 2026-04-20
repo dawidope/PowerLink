@@ -1,6 +1,6 @@
 # PowerLink
 
-NTFS hardlink tool for Windows — deduplicate identical files in place, clone directories without copying data, and drive it all from Explorer.
+NTFS link tool for Windows — deduplicate identical files in place with hardlinks, clone directories without copying data, create directory junctions, and drive it all from Explorer.
 
 > **Status:** pre-release. Setup.exe + portable zip on the [Releases](../../releases) page, not code-signed yet. See [Limitations](#limitations) before installing.
 
@@ -38,13 +38,17 @@ All of this is driven from a WinUI 3 app and a matching CLI. The shell extension
 
 ## Screenshots
 
-| Deduplicate | Hardlink Inspector |
+| Deduplicate | Link Inspector |
 |---|---|
 | ![Deduplicate page](docs/media/dedup-page.png) | ![Inspector page](docs/media/inspector-page.png) |
 
-| Clone | Settings |
+| Clone | Junction |
 |---|---|
-| ![Clone page](docs/media/clone-page.png) | ![Settings page](docs/media/settings-page.png) |
+| ![Clone page](docs/media/clone-page.png) | ![Junction page](docs/media/junction-page.png) |
+
+| Settings | |
+|---|---|
+| ![Settings page](docs/media/settings-page.png) | |
 
 **Explorer context menu** — classic right-click menu (under "Show more options" on Windows 11) on the left, Windows 11 modern top-section menu on the right. Both show the PowerLink submenu expanded:
 
@@ -86,7 +90,8 @@ Curated release notes for each version are in [CHANGELOG.md](CHANGELOG.md) and o
 2. Pick an operation:
    - **Deduplicate** — add folders, press Scan (F5), review groups, press "Replace duplicates with hardlinks".
    - **Clone** — pick source + destination, optionally Dry run, press Run.
-   - **Inspect** — add folders, press Scan to see all existing hardlink groups.
+   - **Junction** — pick a target folder, pick the parent folder where the junction appears, hit Create.
+   - **Inspect** — add folders, press Scan to see all existing hardlink groups and junctions.
 3. Optional: open **Settings** and install shell integration (see [Explorer integration](#explorer-integration) below).
 
 No background service, no registry writes until you opt into shell integration from Settings. Setup.exe registers itself in Add/Remove Programs (per-user, no admin); Portable.zip leaves no trace beyond the folder you extracted into.
@@ -187,7 +192,7 @@ Integration tests that load the native DLL skip silently if `PowerLink.ShellExt.
 ```
 src/
   PowerLink.Core/         — file scanning, hashing (XxHash128), dedup engine, clone engine, Win32 hardlink wrappers
-  PowerLink.App/          — WinUI 3 desktop app (Deduplicate, Inspector, Clone, Settings pages, Velopack updater)
+  PowerLink.App/          — WinUI 3 desktop app (Deduplicate, Clone, Junction, Inspector, Settings pages, Velopack updater)
   PowerLink.Cli/          — command-line interface + elevated overlay installer
   PowerLink.ShellExt/     — native C++ COM DLL: overlay handler, drop handler, Win11 modern menu command, plus
                             `ShellExtUtils.{h,cpp}` with the testable helpers (FormatArgs, GetModuleDir, etc.)
