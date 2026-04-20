@@ -6,10 +6,12 @@ namespace
 {
     constexpr UINT CMD_HARDLINK = 0;
     constexpr UINT CMD_CLONE    = 1;
+    constexpr UINT CMD_JUNCTION = 2;
 
     // Reused status-bar / accessibility strings.
     constexpr wchar_t HelpHardlink[] = L"Create NTFS hardlinks here — no extra disk space, same volume only.";
-    constexpr wchar_t HelpClone[]    = L"Clone folder tree here as hardlinks via PowerLink.Cli.";
+    constexpr wchar_t HelpClone[]    = L"Clone the folder tree here as hardlinks — same volume only.";
+    constexpr wchar_t HelpJunction[] = L"Create a junction here pointing at the dragged folder — no admin required, cross-volume OK.";
 
     bool EqualVolumes(PCWSTR a, PCWSTR b)
     {
@@ -204,33 +206,39 @@ IFACEMETHODIMP PowerLinkDropHandler::QueryContextMenu(HMENU hMenu, UINT indexMen
         return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
     }
 
-    // Per MSDN, the return value reports the largest *offset* we used relative
-    // to idCmdFirst, plus one — NOT the count of items added. The previous
-    // "return added" pattern accidentally worked when we only added
-    // CMD_HARDLINK (offset 0, count 1 == max_offset+1) but silently broke for
-    // folder drops where we add only CMD_CLONE (offset 1, count 1, but the
-    // contract requires us to return 2). The wrong return made Windows
-    // advance the next handler's idCmdFirst by 1 instead of 2, producing an
-    // ID collision: the next handler (7-Zip on the test machine) reused
-    // id 4097 and Windows routed clicks on our visible "Clone tree here"
-    // label to 7-Zip's InvokeCommand.
+    // Build a 'PowerLink' popup parent and populate the child menu with our
+    // actions. This matches 7-Zip / other well-behaved drop handlers — the
+    // user sees a single "PowerLink >" entry that cascades, rather than
+    // multiple top-level rows competing with Copy/Move/Create shortcut.
+    //
+    // The return-value contract is still "max offset used + 1" — the submenu
+    // item IDs occupy the same idCmdFirst range as if they were top-level,
+    // so this is unchanged from flat-layout logic (regression-protected by
+    // tests/PowerLink.ShellExt.Tests QueryContextMenuHResult cases).
     UINT maxUsedOffsetPlusOne = 0;
-    UINT pos = indexMenu;
-
     auto markUsed = [&](UINT offset) {
         const UINT plusOne = offset + 1;
         if (plusOne > maxUsedOffsetPlusOne) maxUsedOffsetPlusOne = plusOne;
     };
 
+    HMENU childMenu = CreatePopupMenu();
+    if (childMenu == nullptr)
+    {
+        DebugLog(L"  -> CreatePopupMenu failed, returning 0");
+        return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
+    }
+
+    UINT childPos = 0;
+
     if (!_sourceFiles.empty() && idCmdFirst + CMD_HARDLINK <= idCmdLast)
     {
         WCHAR label[64];
         if (_sourceFiles.size() == 1)
-            StringCchCopyW(label, 64, L"PowerLink: Hardlink here");
+            StringCchCopyW(label, 64, L"Hardlink here");
         else
-            StringCchPrintfW(label, 64, L"PowerLink: Hardlink %zu files here", _sourceFiles.size());
+            StringCchPrintfW(label, 64, L"Hardlink %zu files here", _sourceFiles.size());
 
-        InsertMenuW(hMenu, pos++, MF_BYPOSITION | MF_STRING, idCmdFirst + CMD_HARDLINK, label);
+        InsertMenuW(childMenu, childPos++, MF_BYPOSITION | MF_STRING, idCmdFirst + CMD_HARDLINK, label);
         markUsed(CMD_HARDLINK);
         DebugLog(L"  inserted CMD_HARDLINK at id=" + std::to_wstring(idCmdFirst + CMD_HARDLINK));
     }
@@ -239,17 +247,58 @@ IFACEMETHODIMP PowerLinkDropHandler::QueryContextMenu(HMENU hMenu, UINT indexMen
     {
         WCHAR label[64];
         if (_sourceDirs.size() == 1)
-            StringCchCopyW(label, 64, L"PowerLink: Clone tree here");
+            StringCchCopyW(label, 64, L"Clone tree here (hardlinks)");
         else
-            StringCchPrintfW(label, 64, L"PowerLink: Clone %zu trees here", _sourceDirs.size());
+            StringCchPrintfW(label, 64, L"Clone %zu trees here (hardlinks)", _sourceDirs.size());
 
-        InsertMenuW(hMenu, pos++, MF_BYPOSITION | MF_STRING, idCmdFirst + CMD_CLONE, label);
+        InsertMenuW(childMenu, childPos++, MF_BYPOSITION | MF_STRING, idCmdFirst + CMD_CLONE, label);
         markUsed(CMD_CLONE);
         DebugLog(L"  inserted CMD_CLONE at id=" + std::to_wstring(idCmdFirst + CMD_CLONE));
     }
 
+    if (!_sourceDirs.empty() && idCmdFirst + CMD_JUNCTION <= idCmdLast)
+    {
+        WCHAR label[64];
+        if (_sourceDirs.size() == 1)
+            StringCchCopyW(label, 64, L"Junction here");
+        else
+            StringCchPrintfW(label, 64, L"Junction here (%zu sources)", _sourceDirs.size());
+
+        InsertMenuW(childMenu, childPos++, MF_BYPOSITION | MF_STRING, idCmdFirst + CMD_JUNCTION, label);
+        markUsed(CMD_JUNCTION);
+        DebugLog(L"  inserted CMD_JUNCTION at id=" + std::to_wstring(idCmdFirst + CMD_JUNCTION));
+    }
+
+    if (childPos == 0)
+    {
+        // No applicable actions for this selection — destroy the empty popup
+        // and contribute nothing to the parent menu.
+        DestroyMenu(childMenu);
+        DebugLog(L"  -> no applicable items, returning 0");
+        return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
+    }
+
+    MENUITEMINFOW mii{};
+    mii.cbSize = sizeof(mii);
+    mii.fMask = MIIM_STRING | MIIM_SUBMENU | MIIM_FTYPE;
+    mii.fType = MFT_STRING;
+    mii.dwTypeData = const_cast<LPWSTR>(L"PowerLink");
+    mii.hSubMenu = childMenu;
+    if (!InsertMenuItemW(hMenu, indexMenu, TRUE, &mii))
+    {
+        // Fallback: if the shell refused the popup (unlikely but observed on
+        // some third-party shell replacements), cleanly release the child
+        // menu. The user won't see PowerLink in this menu — better than a
+        // handle leak.
+        DestroyMenu(childMenu);
+        DebugLog(L"  -> InsertMenuItemW failed for popup, returning 0");
+        return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
+    }
+
     DebugLog(L"  -> maxUsedOffsetPlusOne=" + std::to_wstring(maxUsedOffsetPlusOne));
-    return MAKE_HRESULT(SEVERITY_SUCCESS, 0, maxUsedOffsetPlusOne);
+    return PowerLink::ShellExtUtils::QueryContextMenuHResult(
+        maxUsedOffsetPlusOne == 0 ? 0 : maxUsedOffsetPlusOne - 1,
+        maxUsedOffsetPlusOne != 0);
 }
 
 IFACEMETHODIMP PowerLinkDropHandler::InvokeCommand(CMINVOKECOMMANDINFO* pici)
@@ -375,6 +424,67 @@ IFACEMETHODIMP PowerLinkDropHandler::InvokeCommand(CMINVOKECOMMANDINFO* pici)
         return S_OK;
     }
 
+    if (cmd == CMD_JUNCTION)
+    {
+        DebugLog(L"  CMD_JUNCTION branch");
+        if (_sourceDirs.empty())
+        {
+            DebugLog(L"    no source dirs");
+            ReportError(hwnd, L"PowerLink: Junction here", L"No folders in selection.");
+            return S_OK;
+        }
+
+        const std::wstring cli = ResolveCliPath();
+        DebugLog(L"    resolved cli path: '" + cli + L"'");
+        const DWORD cliAttrs = cli.empty() ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(cli.c_str());
+        if (cli.empty() || cliAttrs == INVALID_FILE_ATTRIBUTES)
+        {
+            DebugLog(L"    -> cli not found, returning");
+            ReportError(hwnd, L"PowerLink: Junction here",
+                L"PowerLink.Cli.exe not found next to the shell extension DLL.");
+            return S_OK;
+        }
+
+        // Junctions don't need admin and there's no cross-volume hardlink
+        // constraint to check here — the only real failure modes are
+        // "target already exists as a populated folder" and
+        // "target already exists as a file". Let the CLI surface those
+        // since it formats them into a user-readable message.
+        size_t launched = 0;
+        for (const auto& src : _sourceDirs)
+        {
+            std::wstring linkPath = _targetFolder;
+            if (!linkPath.empty() && linkPath.back() != L'\\') linkPath += L'\\';
+            linkPath += BaseName(src.c_str());
+
+            std::wstring cmdline =
+                L"\"" + cli + L"\" junction create \"" + linkPath + L"\" \"" + src + L"\"";
+            DebugLog(L"    spawning: " + cmdline);
+
+            STARTUPINFOW si{ sizeof(si) };
+            PROCESS_INFORMATION pi{};
+            std::vector<wchar_t> buf(cmdline.begin(), cmdline.end());
+            buf.push_back(L'\0');
+
+            const BOOL ok = CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE,
+                                           CREATE_NEW_CONSOLE, nullptr, nullptr, &si, &pi);
+            const DWORD lastErr = GetLastError();
+            DebugLog(L"      CreateProcessW ok=" + std::to_wstring(ok) +
+                     L" GetLastError=" + std::to_wstring(lastErr));
+            if (ok)
+            {
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+                launched++;
+            }
+        }
+
+        DebugLog(L"    launched=" + std::to_wstring(launched));
+        if (launched == 0)
+            ReportError(hwnd, L"PowerLink: Junction here", L"Failed to launch PowerLink.Cli.");
+        return S_OK;
+    }
+
     DebugLog(L"  -> unknown cmd, E_INVALIDARG");
     return E_INVALIDARG;
 }
@@ -386,6 +496,7 @@ IFACEMETHODIMP PowerLinkDropHandler::GetCommandString(UINT_PTR idCmd, UINT uType
     PCWSTR help = nullptr;
     if (idCmd == CMD_HARDLINK)      help = HelpHardlink;
     else if (idCmd == CMD_CLONE)    help = HelpClone;
+    else if (idCmd == CMD_JUNCTION) help = HelpJunction;
     else return E_INVALIDARG;
 
     if (uType == GCS_HELPTEXTW)

@@ -85,6 +85,19 @@ public static class ShellExtensionService
         },
         new ShellVerb
         {
+            Id = "PowerLinkDropJunction",
+            Label = "PowerLink: Drop as junction here",
+            Description = "Create a junction here pointing at the picked folder. Folder sources only (junctions don't apply to files). No admin needed; deleting the junction never affects the target.",
+            TargetsText = "Folders, folder background",
+            Executable = ShellVerbTarget.Cli,
+            Keys = new[]
+            {
+                new ShellVerbKey(@"Folder\shell\PowerLinkDropJunction", "drop-junction \"%1\""),
+                new ShellVerbKey(@"Directory\Background\shell\PowerLinkDropJunction", "drop-junction \"%V\""),
+            },
+        },
+        new ShellVerb
+        {
             Id = "PowerLinkShowLinks",
             Label = "PowerLink: Show hardlinks",
             Description = "Show every path on this volume that is a hardlink to this file's data. Quick dialog, no scan.",
@@ -133,6 +146,18 @@ public static class ShellExtensionService
                 new ShellVerbKey(@"Folder\shell\PowerLinkClone", "--clone \"%1\""),
             },
         },
+        new ShellVerb
+        {
+            Id = "PowerLinkJunction",
+            Label = "PowerLink: Create junction pointing at this folder",
+            Description = "Open PowerLink's Junction page with this folder pre-filled as the target. Pick the parent folder where the junction appears. No admin or Developer Mode needed; deleting a junction never affects the target's contents.",
+            TargetsText = "Folders",
+            Executable = ShellVerbTarget.App,
+            Keys = new[]
+            {
+                new ShellVerbKey(@"Folder\shell\PowerLinkJunction", "--junction \"%1\""),
+            },
+        },
     };
 
     public static IReadOnlyList<ShellVerb> OverlayVerbs { get; } = new[]
@@ -156,7 +181,7 @@ public static class ShellExtensionService
         {
             Id = "PowerLinkDropHandler",
             Label = "PowerLink drop handler",
-            Description = "Right-drag files/folders onto a folder and choose 'Hardlink here' or 'Clone tree here'. One DLL adds both menu items. Per-user HKCU, no admin.",
+            Description = "Right-drag files or folders onto a folder and choose 'Hardlink here' (for files), 'Clone tree here' (for folders), or 'Junction here pointing at source' (for folders). One DLL adds all three menu items. Per-user HKCU, no admin.",
             TargetsText = "Right-drag onto Folder",
             Executable = ShellVerbTarget.App,
             Keys = Array.Empty<ShellVerbKey>(),

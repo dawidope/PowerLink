@@ -8,7 +8,7 @@ using WinRtActivation = Windows.ApplicationModel.Activation;
 
 namespace PowerLink.App;
 
-public enum LaunchMode { Dedup, Inspect, Clone }
+public enum LaunchMode { Dedup, Inspect, Clone, Junction }
 
 public sealed record LaunchPreset(LaunchMode Mode, string Path);
 
@@ -101,6 +101,7 @@ public partial class App : Application
                 "--dedup" => LaunchMode.Dedup,
                 "--inspect" => LaunchMode.Inspect,
                 "--clone" => LaunchMode.Clone,
+                "--junction" => LaunchMode.Junction,
                 _ => null,
             };
             if (mode is not null)

@@ -18,6 +18,7 @@ public static class Program
         root.Add(BuildCloneCommand());
         root.Add(BuildPickCommand());
         root.Add(BuildDropCommand());
+        root.Add(BuildDropJunctionCommand());
         root.Add(BuildShowLinksCommand());
         root.Add(BuildJunctionCommand());
         root.Add(BuildInstallOverlayCommand());
@@ -129,6 +130,63 @@ public static class Program
         cmd.Add(targetArg);
         cmd.SetAction((parseResult, ct) => DropAsync(parseResult.GetValue(targetArg)!, ct));
         return cmd;
+    }
+
+    private static Command BuildDropJunctionCommand()
+    {
+        var targetArg = new Argument<string>("target") { Description = "Target directory where the junction is created." };
+        var cmd = new Command("drop-junction",
+            "Create a junction at <target> pointing at the previously picked folder. Folder sources only — junctions don't apply to files.");
+        cmd.Add(targetArg);
+        cmd.SetAction((parseResult, _) => Task.FromResult(DropJunction(parseResult.GetValue(targetArg)!)));
+        return cmd;
+    }
+
+    private static int DropJunction(string target)
+    {
+        var picked = PickedSourceStore.TryLoad();
+        if (picked is null)
+        {
+            ShellUi.ReportError("PowerLink: Drop as junction",
+                "Nothing picked. Right-click a folder first and choose 'PowerLink: Pick as link source'.");
+            return 2;
+        }
+
+        if (!picked.IsDirectory)
+        {
+            ShellUi.ReportError("PowerLink: Drop as junction",
+                $"Picked source is a file, not a folder. Junctions only apply to directories.\n\nPicked: {picked.Path}");
+            return 1;
+        }
+
+        var targetFull = Path.GetFullPath(target);
+        if (!Directory.Exists(targetFull))
+        {
+            ShellUi.ReportError("PowerLink: Drop as junction", $"Target directory not found: {targetFull}");
+            return 1;
+        }
+
+        if (!Directory.Exists(picked.Path))
+        {
+            ShellUi.ReportError("PowerLink: Drop as junction", $"Picked source no longer exists: {picked.Path}");
+            return 3;
+        }
+
+        var linkName = Path.GetFileName(picked.Path.TrimEnd(
+            Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var linkPath = Path.Combine(targetFull, linkName);
+
+        try
+        {
+            Win32Junction.Create(linkPath, picked.Path);
+            Console.WriteLine($"Junction created: {linkPath} -> {picked.Path}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            ShellUi.ReportError("PowerLink: Drop as junction", ex.Message);
+            return 1;
+        }
     }
 
     private static Command BuildShowLinksCommand()
