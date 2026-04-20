@@ -283,7 +283,9 @@ public static class Program
             {
                 Console.WriteLine($"Cloning {picked.Path} -> {targetFull} as hardlinks...");
                 var engine = new CloneEngine();
-                var result = await engine.CloneAsync(picked.Path, targetFull, dryRun: false, ct);
+                var progress = new ConsoleProgress();
+                var result = await engine.CloneAsync(picked.Path, targetFull, dryRun: false, ct, progress);
+                Console.Error.WriteLine();
                 Console.WriteLine($"Linked into: {result.EffectiveDestPath}");
                 Console.WriteLine($"Directories: {result.DirectoriesCreated:N0}, Files linked: {result.FilesLinked:N0}, Failed: {result.FilesFailed:N0}.");
                 return result.FilesFailed == 0 ? 0 : 1;
@@ -317,84 +319,123 @@ public static class Program
 
     private static async Task<int> ScanAsync(string[] paths, long minSize, CancellationToken ct)
     {
-        Console.WriteLine($"Scanning {paths.Length} location(s) (min size {FormatBytes(minSize)})...");
+        try
+        {
+            Console.WriteLine($"Scanning {paths.Length} location(s) (min size {FormatBytes(minSize)})...");
 
-        var scanner = new FileScanner();
-        var progress = new ConsoleProgress();
+            var scanner = new FileScanner();
+            var progress = new ConsoleProgress();
 
-        var records = await scanner.ScanAsync(paths, minSize, ct, progress);
-        Console.WriteLine();
-        Console.WriteLine($"Found {records.Count:N0} files, total {FormatBytes(records.Sum(r => r.SizeBytes))}.");
+            var records = await scanner.ScanAsync(paths, minSize, ct, progress);
+            Console.Error.WriteLine();
+            Console.WriteLine($"Found {records.Count:N0} files, total {FormatBytes(records.Sum(r => r.SizeBytes))}.");
 
-        var engine = new DedupEngine();
-        var result = await engine.AnalyzeAsync(records, ct, progress);
-        Console.WriteLine();
+            var engine = new DedupEngine();
+            var result = await engine.AnalyzeAsync(records, ct, progress);
+            Console.Error.WriteLine();
 
-        PrintReport(result);
-        return 0;
+            PrintReport(result);
+            return 0;
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("Cancelled.");
+            return 130;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"scan failed: {ex.Message}");
+            return 1;
+        }
     }
 
     private static async Task<int> DedupAsync(string[] paths, long minSize, bool execute, bool verifyContent, CancellationToken ct)
     {
-        Console.WriteLine($"Scanning {paths.Length} location(s) (min size {FormatBytes(minSize)})...");
-
-        var scanner = new FileScanner();
-        var progress = new ConsoleProgress();
-
-        var records = await scanner.ScanAsync(paths, minSize, ct, progress);
-        Console.WriteLine();
-
-        var engine = new DedupEngine();
-        var result = await engine.AnalyzeAsync(records, ct, progress);
-        Console.WriteLine();
-
-        PrintReport(result);
-
-        var plan = DedupEngine.CreatePlan(result);
-        if (plan.ActionCount == 0)
+        try
         {
-            Console.WriteLine("Nothing to do.");
-            return 0;
-        }
+            Console.WriteLine($"Scanning {paths.Length} location(s) (min size {FormatBytes(minSize)})...");
 
-        if (!execute)
-        {
+            var scanner = new FileScanner();
+            var progress = new ConsoleProgress();
+
+            var records = await scanner.ScanAsync(paths, minSize, ct, progress);
+            Console.Error.WriteLine();
+
+            var engine = new DedupEngine();
+            var result = await engine.AnalyzeAsync(records, ct, progress);
+            Console.Error.WriteLine();
+
+            PrintReport(result);
+
+            var plan = DedupEngine.CreatePlan(result);
+            if (plan.ActionCount == 0)
+            {
+                Console.WriteLine("Nothing to do.");
+                return 0;
+            }
+
+            if (!execute)
+            {
+                Console.WriteLine();
+                Console.WriteLine($"DRY RUN — {plan.ActionCount:N0} actions would recover {FormatBytes(plan.TotalBytesToRecover)}.");
+                Console.WriteLine("Re-run with --execute to apply.");
+                return 0;
+            }
+
             Console.WriteLine();
-            Console.WriteLine($"DRY RUN — {plan.ActionCount:N0} actions would recover {FormatBytes(plan.TotalBytesToRecover)}.");
-            Console.WriteLine("Re-run with --execute to apply.");
-            return 0;
+            Console.WriteLine($"Executing {plan.ActionCount:N0} actions{(verifyContent ? " (with content re-verify)" : string.Empty)}...");
+            var executor = new DedupExecutor();
+            var execResult = await executor.ExecuteAsync(
+                plan, ct, progress, options: new DedupExecutorOptions { AlwaysVerifyContent = verifyContent });
+            Console.Error.WriteLine();
+            var prefix = execResult.WasCancelled ? "Stopped. Partial — " : "Done. ";
+            var alreadyLinked = execResult.AlreadyLinkedCount > 0
+                ? $", Already linked: {execResult.AlreadyLinkedCount:N0}"
+                : string.Empty;
+            Console.WriteLine($"{prefix}Success: {execResult.SuccessCount:N0}, Failures: {execResult.FailureCount:N0}{alreadyLinked}, Recovered: {FormatBytes(execResult.BytesRecovered)}.");
+            foreach (var failure in execResult.Failures.Take(20))
+                Console.WriteLine($"  FAIL {failure.DuplicatePath}: {failure.Reason}");
+
+            return execResult.FailureCount == 0 ? 0 : 1;
         }
-
-        Console.WriteLine();
-        Console.WriteLine($"Executing {plan.ActionCount:N0} actions{(verifyContent ? " (with content re-verify)" : string.Empty)}...");
-        var executor = new DedupExecutor();
-        var execResult = await executor.ExecuteAsync(
-            plan, ct, progress, options: new DedupExecutorOptions { AlwaysVerifyContent = verifyContent });
-        Console.WriteLine();
-        var prefix = execResult.WasCancelled ? "Stopped. Partial — " : "Done. ";
-        var alreadyLinked = execResult.AlreadyLinkedCount > 0
-            ? $", Already linked: {execResult.AlreadyLinkedCount:N0}"
-            : string.Empty;
-        Console.WriteLine($"{prefix}Success: {execResult.SuccessCount:N0}, Failures: {execResult.FailureCount:N0}{alreadyLinked}, Recovered: {FormatBytes(execResult.BytesRecovered)}.");
-        foreach (var failure in execResult.Failures.Take(20))
-            Console.WriteLine($"  FAIL {failure.DuplicatePath}: {failure.Reason}");
-
-        return execResult.FailureCount == 0 ? 0 : 1;
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("Cancelled.");
+            return 130;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"dedup failed: {ex.Message}");
+            return 1;
+        }
     }
 
     private static async Task<int> CloneAsync(string source, string dest, bool dryRun, CancellationToken ct)
     {
-        Console.WriteLine($"{(dryRun ? "[DRY RUN] " : string.Empty)}Cloning '{source}' -> '{dest}'...");
+        try
+        {
+            Console.WriteLine($"{(dryRun ? "[DRY RUN] " : string.Empty)}Cloning '{source}' -> '{dest}'...");
 
-        var engine = new CloneEngine();
-        var progress = new ConsoleProgress();
-        var result = await engine.CloneAsync(source, dest, dryRun, ct, progress);
-        Console.WriteLine();
-        Console.WriteLine($"Cloned to: {result.EffectiveDestPath}");
-        Console.WriteLine($"Directories: {result.DirectoriesCreated:N0}, Files linked: {result.FilesLinked:N0}, Failed: {result.FilesFailed:N0}.");
-        foreach (var f in result.Failures.Take(20))
-            Console.WriteLine($"  FAIL {f}");
-        return result.FilesFailed == 0 ? 0 : 1;
+            var engine = new CloneEngine();
+            var progress = new ConsoleProgress();
+            var result = await engine.CloneAsync(source, dest, dryRun, ct, progress);
+            Console.Error.WriteLine();
+            Console.WriteLine($"Cloned to: {result.EffectiveDestPath}");
+            Console.WriteLine($"Directories: {result.DirectoriesCreated:N0}, Files linked: {result.FilesLinked:N0}, Failed: {result.FilesFailed:N0}.");
+            foreach (var f in result.Failures.Take(20))
+                Console.WriteLine($"  FAIL {f}");
+            return result.FilesFailed == 0 ? 0 : 1;
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("Cancelled.");
+            return 130;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"clone failed: {ex.Message}");
+            return 1;
+        }
     }
 
     private static void PrintReport(ScanResult result)
@@ -432,13 +473,16 @@ public static class Program
     private sealed class ConsoleProgress : IProgress<ScanProgress>
     {
         private ScanPhase _lastPhase = (ScanPhase)(-1);
-        private readonly bool _isInteractive = !Console.IsOutputRedirected;
+        // Interactivity is gated on stderr (where progress goes), not stdout —
+        // a user piping `dedup ... | tee log.txt` still wants the live spinner
+        // on their terminal, not a flood of WriteLines polluting the log.
+        private readonly bool _isInteractive = !Console.IsErrorRedirected;
 
         public void Report(ScanProgress value)
         {
             if (value.Phase != _lastPhase)
             {
-                if ((int)_lastPhase >= 0) Console.WriteLine();
+                if ((int)_lastPhase >= 0) Console.Error.WriteLine();
                 _lastPhase = value.Phase;
             }
 
@@ -451,11 +495,11 @@ public static class Program
             {
                 var width = TryGetWindowWidth();
                 var padded = suffix.Length > width ? suffix[..width] : suffix.PadRight(width);
-                Console.Write("\r" + padded);
+                Console.Error.Write("\r" + padded);
             }
             else
             {
-                Console.WriteLine(suffix);
+                Console.Error.WriteLine(suffix);
             }
         }
 
