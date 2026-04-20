@@ -245,13 +245,14 @@ IFACEMETHODIMP PowerLinkDropHandler::InvokeCommand(CMINVOKECOMMANDINFO* pici)
             return S_OK;
         }
 
-        // Use the same breakaway-aware spawn path as ModernMenuCommand —
-        // when the DLL is hosted in the packaged dllhost.exe surrogate, a
-        // bare CreateProcessW inherits the package identity and the
-        // unpackaged Cli exits with 0x80070032 (we documented the diagnosis
-        // in ModernMenuCommand.cpp's LaunchExe comment block). The previous
-        // implementation here silently failed on machines that surfaced the
-        // modern (AppX) registration path.
+        // Direct CreateProcessW — DropHandler is registered for HKCU drop
+        // verbs and runs inside Explorer.exe, NOT in the packaged dllhost
+        // surrogate that hosts our IExplorerCommand. Routing through
+        // `cmd /c start "" /b ...` here (the v0.4.0 attempt at unifying with
+        // ModernMenuCommand's launcher) caused `start` to fall through to
+        // ShellExecute, which on at least one test machine surfaced a 7-Zip
+        // dialog instead of running the Cli. The original direct spawn
+        // worked here because Explorer is unpackaged.
         size_t launched = 0;
         for (const auto& src : _sourceDirs)
         {
@@ -259,9 +260,20 @@ IFACEMETHODIMP PowerLinkDropHandler::InvokeCommand(CMINVOKECOMMANDINFO* pici)
             if (!dest.empty() && dest.back() != L'\\') dest += L'\\';
             dest += BaseName(src.c_str());
 
-            const std::wstring args = L"clone \"" + src + L"\" \"" + dest + L"\"";
-            if (PowerLink::ShellExtUtils::LaunchProcessWithBreakaway(cli, args, std::wstring{}))
+            std::wstring cmdline = L"\"" + cli + L"\" clone \"" + src + L"\" \"" + dest + L"\"";
+
+            STARTUPINFOW si{ sizeof(si) };
+            PROCESS_INFORMATION pi{};
+            std::vector<wchar_t> buf(cmdline.begin(), cmdline.end());
+            buf.push_back(L'\0');
+
+            if (CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE,
+                               CREATE_NEW_CONSOLE, nullptr, nullptr, &si, &pi))
+            {
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
                 launched++;
+            }
         }
 
         if (launched == 0)

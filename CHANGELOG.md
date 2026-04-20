@@ -5,6 +5,21 @@ loosely. The release workflow extracts the section matching the pushed tag
 (e.g. `v0.4.0` → `## [0.4.0]`) and uses it as the body of the GitHub release.
 The auto-generated PR/commit list still appears below it on the release page.
 
+## [0.4.1] — 2026-04-20
+
+Hotfix.
+
+### Fixed
+
+- **"Clone tree here" no longer pops up an unrelated app dialog.** v0.4.0
+  routed this drop verb through `cmd /c start "" /b "<cli>" ...` to add
+  process breakaway for an MSIX-surrogate scenario that doesn't actually
+  apply to the classic drag-and-drop handler (which is hosted in
+  Explorer.exe, not in `dllhost.exe`). On at least one configuration the
+  `start` indirection fell through to ShellExecute and surfaced a 7-Zip
+  dialog instead of launching `PowerLink.Cli`. Reverted to the direct
+  `CreateProcessW` call this verb shipped with through v0.3.x.
+
 ## [0.4.0] — 2026-04-20
 
 Cleanup batch driven by a multi-component code review. Most of the work is
