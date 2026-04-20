@@ -58,6 +58,8 @@ public static class Win32Junction
             throw new IOException(
                 $"Cannot create junction: '{linkFull}' already exists as a file.");
         }
+
+        bool createdByUs;
         if (Directory.Exists(linkFull))
         {
             try
@@ -73,10 +75,12 @@ public static class Win32Junction
                 throw new IOException(
                     $"Cannot create junction: '{linkFull}' exists but cannot be inspected.", ex);
             }
+            createdByUs = false;
         }
         else
         {
             Directory.CreateDirectory(linkFull);
+            createdByUs = true;
         }
 
         try
@@ -85,7 +89,14 @@ public static class Win32Junction
         }
         catch
         {
-            try { Directory.Delete(linkFull); } catch { }
+            // Only delete the directory if WE created it. A pre-existing
+            // empty directory belongs to the caller and must be preserved
+            // even when WriteReparseData fails (e.g. permission denied,
+            // filesystem doesn't support reparse points).
+            if (createdByUs)
+            {
+                try { Directory.Delete(linkFull); } catch { }
+            }
             throw;
         }
     }
