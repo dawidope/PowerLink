@@ -92,6 +92,7 @@ public sealed partial class MainWindow : Window
         {
             "dedup" => typeof(DedupPage),
             "clone" => typeof(ClonePage),
+            "junction" => typeof(JunctionPage),
             "inspector" => typeof(InspectorPage),
             "settings" => typeof(SettingsPage),
             _ => null,
