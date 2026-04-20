@@ -5,6 +5,35 @@ loosely. The release workflow extracts the section matching the pushed tag
 (e.g. `v0.4.0` → `## [0.4.0]`) and uses it as the body of the GitHub release.
 The auto-generated PR/commit list still appears below it on the release page.
 
+## [0.4.2] — 2026-04-20
+
+Real fix for the "Clone tree here" issue v0.4.1 missed.
+
+### Fixed
+
+- **"Clone tree here" actually works now.** The 7-Zip dialog was not a v0.4.0
+  regression as v0.4.1's revert assumed — it was a pre-existing bug in
+  `PowerLinkDropHandler::QueryContextMenu`. The handler returned the *count*
+  of items added (per the obvious-but-wrong reading) instead of the
+  documented *largest command-id offset used, plus one*. With folder drops
+  the only inserted item was at offset 1 (CMD_CLONE), but we returned 1
+  instead of 2. Windows then advanced the next chained drop handler's
+  `idCmdFirst` by 1 — colliding our id 4097 with the next handler's id
+  4097. Visually the user saw "PowerLink: Clone tree here" but the click
+  routed to whichever later handler had claimed the same id (7-Zip on the
+  reporter's machine). Now we track the actual max offset used and return
+  that plus one.
+
+  Hardlink-on-file drops happened to ship working because CMD_HARDLINK
+  is offset 0 and `count==1==max+1` for that case — the wrong formula
+  produced the right number by coincidence.
+
+### Added (internal)
+
+- DropHandler now writes Debug-build diagnostic traces to
+  `%TEMP%\powerlink-menu.log` (the same file ModernMenuCommand uses), with
+  a `[drop]` tag. No effect on Release builds — pure no-op.
+
 ## [0.4.1] — 2026-04-20
 
 Hotfix.

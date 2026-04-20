@@ -38,6 +38,41 @@ namespace
     {
         MessageBoxW(hwnd, body, title, MB_OK | MB_ICONWARNING | MB_TASKMODAL);
     }
+
+    // Diagnostic logger — writes to %TEMP%\powerlink-menu.log so it lands in
+    // the same file ModernMenuCommand already uses, with a [drop] tag so we
+    // can tell the two source paths apart. Compiled into Debug builds only;
+    // becomes a no-op in Release so end-user machines see no per-invoke
+    // file I/O on every right-click.
+#ifdef _DEBUG
+    void DebugLog(const std::wstring& msg)
+    {
+        WCHAR temp[MAX_PATH]{};
+        if (GetTempPathW(MAX_PATH, temp) == 0) return;
+        const std::wstring path = std::wstring(temp) + L"powerlink-menu.log";
+        HANDLE h = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                               nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h == INVALID_HANDLE_VALUE) return;
+        SetFilePointer(h, 0, nullptr, FILE_END);
+
+        SYSTEMTIME st{};
+        GetLocalTime(&st);
+        WCHAR prefix[64]{};
+        StringCchPrintfW(prefix, ARRAYSIZE(prefix), L"[%02d:%02d:%02d.%03d] [drop] ",
+                         st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+
+        const std::wstring line = std::wstring(prefix) + msg + L"\r\n";
+        const int cb = WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.size(),
+                                           nullptr, 0, nullptr, nullptr);
+        std::vector<char> utf8((size_t)cb);
+        WideCharToMultiByte(CP_UTF8, 0, line.c_str(), (int)line.size(), utf8.data(), cb, nullptr, nullptr);
+        DWORD written = 0;
+        WriteFile(h, utf8.data(), (DWORD)utf8.size(), &written, nullptr);
+        CloseHandle(h);
+    }
+#else
+    inline void DebugLog(const std::wstring&) {}
+#endif
 }
 
 PowerLinkDropHandler::PowerLinkDropHandler() : _refCount(1)
@@ -79,15 +114,25 @@ IFACEMETHODIMP_(ULONG) PowerLinkDropHandler::Release()
 
 IFACEMETHODIMP PowerLinkDropHandler::Initialize(PCIDLIST_ABSOLUTE pidlFolder, IDataObject* pDataObj, HKEY /*hKeyProgID*/)
 {
+    DebugLog(L"Initialize entered");
     _targetFolder.clear();
     _sourceFiles.clear();
     _sourceDirs.clear();
 
-    if (pidlFolder == nullptr || pDataObj == nullptr) return E_INVALIDARG;
+    if (pidlFolder == nullptr || pDataObj == nullptr)
+    {
+        DebugLog(L"  -> null pidl or dataObj, E_INVALIDARG");
+        return E_INVALIDARG;
+    }
 
     WCHAR folder[MAX_PATH]{};
-    if (!SHGetPathFromIDListW(pidlFolder, folder)) return E_FAIL;
+    if (!SHGetPathFromIDListW(pidlFolder, folder))
+    {
+        DebugLog(L"  -> SHGetPathFromIDListW failed, E_FAIL");
+        return E_FAIL;
+    }
     _targetFolder = folder;
+    DebugLog(L"  target=" + _targetFolder);
 
     FORMATETC fe = { CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
     STGMEDIUM sm{};
@@ -134,16 +179,48 @@ IFACEMETHODIMP PowerLinkDropHandler::Initialize(PCIDLIST_ABSOLUTE pidlFolder, ID
     GlobalUnlock(sm.hGlobal);
     ReleaseStgMedium(&sm);
 
-    if (FAILED(result)) return result;
-    return (_sourceFiles.empty() && _sourceDirs.empty()) ? E_INVALIDARG : S_OK;
+    DebugLog(L"  files=" + std::to_wstring(_sourceFiles.size()) +
+             L" dirs=" + std::to_wstring(_sourceDirs.size()));
+    for (const auto& f : _sourceFiles) DebugLog(L"    file: " + f);
+    for (const auto& d : _sourceDirs)  DebugLog(L"    dir:  " + d);
+
+    if (FAILED(result)) { DebugLog(L"  -> failed result"); return result; }
+    if (_sourceFiles.empty() && _sourceDirs.empty())
+    {
+        DebugLog(L"  -> no sources, E_INVALIDARG");
+        return E_INVALIDARG;
+    }
+    return S_OK;
 }
 
 IFACEMETHODIMP PowerLinkDropHandler::QueryContextMenu(HMENU hMenu, UINT indexMenu, UINT idCmdFirst, UINT idCmdLast, UINT uFlags)
 {
-    if (uFlags & CMF_DEFAULTONLY) return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
+    DebugLog(L"QueryContextMenu uFlags=0x" + std::to_wstring(uFlags) +
+             L" idCmdFirst=" + std::to_wstring(idCmdFirst) +
+             L" idCmdLast=" + std::to_wstring(idCmdLast));
+    if (uFlags & CMF_DEFAULTONLY)
+    {
+        DebugLog(L"  -> CMF_DEFAULTONLY, returning 0 added");
+        return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
+    }
 
-    UINT added = 0;
+    // Per MSDN, the return value reports the largest *offset* we used relative
+    // to idCmdFirst, plus one — NOT the count of items added. The previous
+    // "return added" pattern accidentally worked when we only added
+    // CMD_HARDLINK (offset 0, count 1 == max_offset+1) but silently broke for
+    // folder drops where we add only CMD_CLONE (offset 1, count 1, but the
+    // contract requires us to return 2). The wrong return made Windows
+    // advance the next handler's idCmdFirst by 1 instead of 2, producing an
+    // ID collision: the next handler (7-Zip on the test machine) reused
+    // id 4097 and Windows routed clicks on our visible "Clone tree here"
+    // label to 7-Zip's InvokeCommand.
+    UINT maxUsedOffsetPlusOne = 0;
     UINT pos = indexMenu;
+
+    auto markUsed = [&](UINT offset) {
+        const UINT plusOne = offset + 1;
+        if (plusOne > maxUsedOffsetPlusOne) maxUsedOffsetPlusOne = plusOne;
+    };
 
     if (!_sourceFiles.empty() && idCmdFirst + CMD_HARDLINK <= idCmdLast)
     {
@@ -154,7 +231,8 @@ IFACEMETHODIMP PowerLinkDropHandler::QueryContextMenu(HMENU hMenu, UINT indexMen
             StringCchPrintfW(label, 64, L"PowerLink: Hardlink %zu files here", _sourceFiles.size());
 
         InsertMenuW(hMenu, pos++, MF_BYPOSITION | MF_STRING, idCmdFirst + CMD_HARDLINK, label);
-        added++;
+        markUsed(CMD_HARDLINK);
+        DebugLog(L"  inserted CMD_HARDLINK at id=" + std::to_wstring(idCmdFirst + CMD_HARDLINK));
     }
 
     if (!_sourceDirs.empty() && idCmdFirst + CMD_CLONE <= idCmdLast)
@@ -166,19 +244,27 @@ IFACEMETHODIMP PowerLinkDropHandler::QueryContextMenu(HMENU hMenu, UINT indexMen
             StringCchPrintfW(label, 64, L"PowerLink: Clone %zu trees here", _sourceDirs.size());
 
         InsertMenuW(hMenu, pos++, MF_BYPOSITION | MF_STRING, idCmdFirst + CMD_CLONE, label);
-        added++;
+        markUsed(CMD_CLONE);
+        DebugLog(L"  inserted CMD_CLONE at id=" + std::to_wstring(idCmdFirst + CMD_CLONE));
     }
 
-    return MAKE_HRESULT(SEVERITY_SUCCESS, 0, added);
+    DebugLog(L"  -> maxUsedOffsetPlusOne=" + std::to_wstring(maxUsedOffsetPlusOne));
+    return MAKE_HRESULT(SEVERITY_SUCCESS, 0, maxUsedOffsetPlusOne);
 }
 
 IFACEMETHODIMP PowerLinkDropHandler::InvokeCommand(CMINVOKECOMMANDINFO* pici)
 {
-    if (pici == nullptr) return E_INVALIDARG;
+    DebugLog(L"InvokeCommand entered");
+    if (pici == nullptr) { DebugLog(L"  -> null pici"); return E_INVALIDARG; }
 
-    if (HIWORD(pici->lpVerb) != 0) return E_INVALIDARG; // we only handle intresource verbs
+    if (HIWORD(pici->lpVerb) != 0)
+    {
+        DebugLog(L"  -> string verb (HIWORD non-zero), E_INVALIDARG");
+        return E_INVALIDARG;
+    }
     const UINT cmd = LOWORD(pici->lpVerb);
     HWND hwnd = pici->hwnd;
+    DebugLog(L"  cmd=" + std::to_wstring(cmd));
 
     if (cmd == CMD_HARDLINK)
     {
@@ -231,15 +317,21 @@ IFACEMETHODIMP PowerLinkDropHandler::InvokeCommand(CMINVOKECOMMANDINFO* pici)
 
     if (cmd == CMD_CLONE)
     {
+        DebugLog(L"  CMD_CLONE branch");
         if (_sourceDirs.empty())
         {
+            DebugLog(L"    no source dirs");
             ReportError(hwnd, L"PowerLink: Clone tree here", L"No folders in selection.");
             return S_OK;
         }
 
         const std::wstring cli = ResolveCliPath();
-        if (cli.empty() || GetFileAttributesW(cli.c_str()) == INVALID_FILE_ATTRIBUTES)
+        DebugLog(L"    resolved cli path: '" + cli + L"'");
+        const DWORD cliAttrs = cli.empty() ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(cli.c_str());
+        DebugLog(L"    cli GetFileAttributesW=0x" + std::to_wstring(cliAttrs));
+        if (cli.empty() || cliAttrs == INVALID_FILE_ATTRIBUTES)
         {
+            DebugLog(L"    -> cli not found, returning");
             ReportError(hwnd, L"PowerLink: Clone tree here",
                 L"PowerLink.Cli.exe not found next to the shell extension DLL.");
             return S_OK;
@@ -247,12 +339,7 @@ IFACEMETHODIMP PowerLinkDropHandler::InvokeCommand(CMINVOKECOMMANDINFO* pici)
 
         // Direct CreateProcessW — DropHandler is registered for HKCU drop
         // verbs and runs inside Explorer.exe, NOT in the packaged dllhost
-        // surrogate that hosts our IExplorerCommand. Routing through
-        // `cmd /c start "" /b ...` here (the v0.4.0 attempt at unifying with
-        // ModernMenuCommand's launcher) caused `start` to fall through to
-        // ShellExecute, which on at least one test machine surfaced a 7-Zip
-        // dialog instead of running the Cli. The original direct spawn
-        // worked here because Explorer is unpackaged.
+        // surrogate that hosts our IExplorerCommand.
         size_t launched = 0;
         for (const auto& src : _sourceDirs)
         {
@@ -261,26 +348,34 @@ IFACEMETHODIMP PowerLinkDropHandler::InvokeCommand(CMINVOKECOMMANDINFO* pici)
             dest += BaseName(src.c_str());
 
             std::wstring cmdline = L"\"" + cli + L"\" clone \"" + src + L"\" \"" + dest + L"\"";
+            DebugLog(L"    spawning: " + cmdline);
 
             STARTUPINFOW si{ sizeof(si) };
             PROCESS_INFORMATION pi{};
             std::vector<wchar_t> buf(cmdline.begin(), cmdline.end());
             buf.push_back(L'\0');
 
-            if (CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE,
-                               CREATE_NEW_CONSOLE, nullptr, nullptr, &si, &pi))
+            const BOOL ok = CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE,
+                                           CREATE_NEW_CONSOLE, nullptr, nullptr, &si, &pi);
+            const DWORD lastErr = GetLastError();
+            DebugLog(L"      CreateProcessW ok=" + std::to_wstring(ok) +
+                     L" GetLastError=" + std::to_wstring(lastErr));
+            if (ok)
             {
+                DebugLog(L"      pid=" + std::to_wstring(pi.dwProcessId));
                 CloseHandle(pi.hThread);
                 CloseHandle(pi.hProcess);
                 launched++;
             }
         }
 
+        DebugLog(L"    launched=" + std::to_wstring(launched));
         if (launched == 0)
             ReportError(hwnd, L"PowerLink: Clone tree here", L"Failed to launch PowerLink.Cli.");
         return S_OK;
     }
 
+    DebugLog(L"  -> unknown cmd, E_INVALIDARG");
     return E_INVALIDARG;
 }
 
