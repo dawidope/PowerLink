@@ -63,9 +63,13 @@ Two flavors per tagged release on the [Releases](../../releases) page. Both bund
 - **`PowerLink-win-Setup.exe`** — installer. Per-user install (no admin), Start Menu entry, Add/Remove Programs registration. ~80 MB.
 - **`PowerLink-win-Portable.zip`** — extract anywhere, run `PowerLink.exe`. No registry footprint until you opt into shell integration. ~80 MB.
 
-Both are produced by [Velopack](https://velopack.io) and share the same auto-update mechanism — the app checks GitHub Releases, downloads a delta, and restarts itself. Setup.exe and Portable.zip are interchangeable in everything except the install footprint.
+Both are produced by [Velopack](https://velopack.io) and share the same auto-update mechanism — the app checks GitHub Releases, downloads the new package, and restarts itself. Setup.exe and Portable.zip are interchangeable in everything except the install footprint.
+
+> **Note:** Velopack-style binary deltas aren't being produced yet (the `vpk pack` step ships only `*-full.nupkg`), so each update downloads the full ~70 MB package rather than a small diff. Functionally fine, just not bandwidth-efficient. Tracked as a follow-up.
 
 First run triggers Windows SmartScreen (the binaries aren't code-signed yet) — click **More info → Run anyway**.
+
+Curated release notes for each version are in [CHANGELOG.md](CHANGELOG.md) and on each GitHub release page (the workflow extracts the matching section automatically).
 
 ## Quick start
 
@@ -105,7 +109,7 @@ Verbs: Pick as link source, Drop as hardlink here, Show hardlinks, Inspect for h
 | Command | What it does |
 |---|---|
 | `scan <paths...> [--min-size N]` | Dry-run scan, prints duplicate groups and wasted bytes. |
-| `dedup <paths...> [--min-size N] [--execute]` | Scan, then (with `--execute`) replace duplicates with hardlinks. |
+| `dedup <paths...> [--min-size N] [--execute] [--verify-content]` | Scan, then (with `--execute`) replace duplicates with hardlinks. `--verify-content` re-hashes both files before each delete (paranoid mode; default is mtime-triggered re-hash only). |
 | `clone <source> <dest> [--dry-run]` | Mirror a folder or link a single file into the destination. |
 | `pick <path>` | Remember a path as the source for a later `drop`. |
 | `drop <target>` | Materialize the picked source at `<target>` (file = one hardlink, folder = tree). |
@@ -113,7 +117,7 @@ Verbs: Pick as link source, Drop as hardlink here, Show hardlinks, Inspect for h
 | `install-overlay <dll-path>` | Register the overlay handler in HKLM. **Admin required.** |
 | `uninstall-overlay` | Remove the overlay handler. **Admin required.** |
 
-Paths with spaces: quote them. Minimum file size for dedup defaults to 1 MiB.
+Paths with spaces: quote them. Minimum file size for dedup defaults to 1 MiB. Progress goes to stderr so `dedup ... | tee log.txt` keeps the structured stdout report clean.
 
 ---
 
@@ -157,10 +161,15 @@ src/PowerLink.App/bin/x64/Release/net8.0-windows10.0.19041.0/
 Run tests:
 
 ```powershell
-dotnet test
+# .NET tests (xUnit)
+dotnet test tests/PowerLink.Core.Tests/PowerLink.Core.Tests.csproj
+
+# Native shell-ext utility tests (small console exe — non-zero exit = fail)
+msbuild tests/PowerLink.ShellExt.Tests/PowerLink.ShellExt.Tests.vcxproj -p:Configuration=Debug -p:Platform=x64
+.\tests\PowerLink.ShellExt.Tests\x64\Debug\PowerLink.ShellExt.Tests.exe
 ```
 
-Integration tests that load the native DLL skip silently if `PowerLink.ShellExt.dll` hasn't been built for the current configuration.
+Integration tests that load the native DLL skip silently if `PowerLink.ShellExt.dll` hasn't been built for the current configuration. The native test exe runs against extracted helpers in `ShellExtUtils.cpp` (FormatArgs, GetModuleDir, SafeDecrement, ClampedSkip) and is also wired into CI (`release.yml` runs it before any publish step).
 
 ---
 
@@ -168,17 +177,21 @@ Integration tests that load the native DLL skip silently if `PowerLink.ShellExt.
 
 ```
 src/
-  PowerLink.Core/      — file scanning, hashing (XxHash128), dedup engine, clone engine, Win32 hardlink wrappers
-  PowerLink.App/       — WinUI 3 desktop app (Deduplicate, Inspector, Clone, Settings pages)
-  PowerLink.Cli/       — command-line interface + elevated overlay installer
-  PowerLink.ShellExt/  — native C++ COM DLL: overlay handler, drop handler, Win11 modern menu command
+  PowerLink.Core/         — file scanning, hashing (XxHash128), dedup engine, clone engine, Win32 hardlink wrappers
+  PowerLink.App/          — WinUI 3 desktop app (Deduplicate, Inspector, Clone, Settings pages, Velopack updater)
+  PowerLink.Cli/          — command-line interface + elevated overlay installer
+  PowerLink.ShellExt/     — native C++ COM DLL: overlay handler, drop handler, Win11 modern menu command, plus
+                            `ShellExtUtils.{h,cpp}` with the testable helpers (FormatArgs, GetModuleDir, etc.)
 tests/
-  PowerLink.Core.Tests/ — xUnit unit + integration tests (46 at time of writing)
+  PowerLink.Core.Tests/   — xUnit unit + integration tests against the C# engine (~60 at time of writing)
+  PowerLink.ShellExt.Tests/ — framework-free C++ console exe exercising the ShellExt utility helpers
 ```
 
 The app is **single-instance with multi-window**: launching `PowerLink.App.exe` a second time focuses the existing window, but shell verbs that carry a target path always open in a new window so you can have one dedup and one inspector side by side.
 
 Dedup algorithm: enumerate → group by `(volume, size)` → 4 KiB prefix XxHash128 → regroup → full-file XxHash128 → final groups ordered by wasted bytes. The canonical (kept) path is the one with the lowest NTFS file index inside each group, so re-running on an already-deduped tree is a no-op rather than a reshuffle.
+
+Replacement is atomic against partial failure: each duplicate is renamed to a `.pl-stage-<guid>` sibling, the hardlink is created at the original path, then the stage is deleted. If `CreateHardLink` fails, the stage is renamed back so the user's file is never lost. If even the restore fails, the executor escalates with the stage path so the data is recoverable manually.
 
 ---
 
