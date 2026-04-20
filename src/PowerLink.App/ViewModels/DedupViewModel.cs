@@ -109,6 +109,7 @@ public partial class DedupViewModel : ObservableObject
         StatusText = "Scanning...";
         ResetProgress(indeterminate: true);
 
+        _cts?.Dispose();
         _cts = new CancellationTokenSource();
         var progress = new Progress<ScanProgress>(OnProgress);
 
@@ -157,6 +158,7 @@ public partial class DedupViewModel : ObservableObject
         StatusText = $"Executing {Plan.ActionCount:N0} actions...";
         ResetProgress(indeterminate: false);
 
+        _cts?.Dispose();
         _cts = new CancellationTokenSource();
         var progress = new Progress<ScanProgress>(OnProgress);
 

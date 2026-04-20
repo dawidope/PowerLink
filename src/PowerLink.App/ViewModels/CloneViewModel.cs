@@ -77,6 +77,7 @@ public partial class CloneViewModel : ObservableObject
         SummaryText = null;
         ResetProgress(indeterminate: true);
         _phaseStopwatch.Restart();
+        _cts?.Dispose();
         _cts = new CancellationTokenSource();
 
         try

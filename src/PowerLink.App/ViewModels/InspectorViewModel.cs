@@ -64,6 +64,7 @@ public partial class InspectorViewModel : ObservableObject
         IsProgressIndeterminate = true;
         ProgressValue = 0;
 
+        _cts?.Dispose();
         _cts = new CancellationTokenSource();
         var progress = new Progress<ScanProgress>(OnProgress);
         var sw = Stopwatch.StartNew();
