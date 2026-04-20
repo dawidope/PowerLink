@@ -9,10 +9,14 @@ namespace PowerLink.Core.Dedup;
 public class DedupExecutor
 {
     private readonly ILogger<DedupExecutor> _logger;
+    private readonly Action<string, string> _createHardLink;
 
-    public DedupExecutor(ILogger<DedupExecutor>? logger = null)
+    public DedupExecutor(
+        ILogger<DedupExecutor>? logger = null,
+        Action<string, string>? createHardLink = null)
     {
         _logger = logger ?? NullLogger<DedupExecutor>.Instance;
+        _createHardLink = createHardLink ?? Win32Hardlink.CreateHardLink;
     }
 
     public Task<DedupExecutionResult> ExecuteAsync(
@@ -65,21 +69,9 @@ public class DedupExecutor
                     }
                     else
                     {
-                        File.Delete(action.DuplicatePath);
-                        try
-                        {
-                            Win32Hardlink.CreateHardLink(action.DuplicatePath, action.CanonicalPath);
-                            successCount++;
-                            bytesRecovered += action.SizeBytes;
-                        }
-                        catch
-                        {
-                            _logger.LogError(
-                                "Hardlink creation failed after deleting duplicate: {Duplicate}. " +
-                                "Canonical is intact at {Canonical}.",
-                                action.DuplicatePath, action.CanonicalPath);
-                            throw;
-                        }
+                        ReplaceWithHardLink(action);
+                        successCount++;
+                        bytesRecovered += action.SizeBytes;
                     }
                 }
                 catch (OperationCanceledException)
@@ -123,6 +115,61 @@ public class DedupExecutor
             Failures = failures,
             WasCancelled = wasCancelled,
         };
+    }
+
+    // Atomic-ish replace: rename duplicate to a stage path (NTFS metadata-only,
+    // near-instant), create the hardlink at the original path, then delete the
+    // stage. If hardlink fails, rename the stage back so the user's file is
+    // never lost. If even that restore fails, escalate loudly with the stage
+    // path so the data is recoverable manually.
+    private void ReplaceWithHardLink(DedupAction action)
+    {
+        var stagePath = action.DuplicatePath + ".pl-stage-" + Guid.NewGuid().ToString("N");
+        File.Move(action.DuplicatePath, stagePath);
+
+        try
+        {
+            _createHardLink(action.DuplicatePath, action.CanonicalPath);
+        }
+        catch (Exception linkEx)
+        {
+            try
+            {
+                File.Move(stagePath, action.DuplicatePath);
+            }
+            catch (Exception restoreEx)
+            {
+                _logger.LogCritical(restoreEx,
+                    "CRITICAL: hardlink failed AND restore failed. " +
+                    "Original duplicate data is preserved at stage path {StagePath}; " +
+                    "{Duplicate} no longer exists. Recover manually.",
+                    stagePath, action.DuplicatePath);
+                throw new AggregateException(
+                    $"Hardlink creation failed and the restore from stage path also failed. " +
+                    $"Duplicate data preserved at: {stagePath}",
+                    linkEx, restoreEx);
+            }
+
+            _logger.LogError(linkEx,
+                "Hardlink creation failed; duplicate restored at {Duplicate}. " +
+                "Canonical is intact at {Canonical}.",
+                action.DuplicatePath, action.CanonicalPath);
+            throw;
+        }
+
+        try
+        {
+            File.Delete(stagePath);
+        }
+        catch (Exception cleanupEx)
+        {
+            // Hardlink is in place — dedup itself succeeded. Stage cleanup
+            // failed (AV lock, etc.); leaves litter but not data loss.
+            _logger.LogWarning(cleanupEx,
+                "Hardlink succeeded but stage file cleanup failed at {StagePath}. " +
+                "Safe to delete manually.",
+                stagePath);
+        }
     }
 
     private enum VerifyOutcome { Proceed, AlreadyLinked }

@@ -344,6 +344,167 @@ public class DedupExecutorTests
         Assert.Equal(mutated, File.ReadAllBytes(dupPath));
     }
 
+    // Group A — P0 #1: delete-then-hardlink atomicity.
+    // Currently DedupExecutor calls File.Delete(dup) then CreateHardLink(dup,
+    // canonical). If CreateHardLink throws, the duplicate is gone forever and
+    // there is no rollback. Tests below inject a throwing hardlink delegate to
+    // simulate that failure mode deterministically.
+
+    [Fact]
+    public async Task Execute_HardLinkFailsAfterDelete_DuplicateRestoredWithOriginalContent()
+    {
+        using var temp = new TempDirectory();
+        var content = new byte[4096];
+        new Random(201).NextBytes(content);
+        temp.CreateFile("a/f.bin", content);
+        temp.CreateFile("b/f.bin", content);
+
+        var plan = await BuildPlanAsync(temp);
+        Assert.Single(plan.Actions);
+        var dupPath = plan.Actions[0].DuplicatePath;
+
+        var executor = new DedupExecutor(
+            createHardLink: (newLink, existing) =>
+                throw new IOException("simulated CreateHardLink failure"));
+        var result = await executor.ExecuteAsync(plan);
+
+        Assert.Equal(0, result.SuccessCount);
+        Assert.Equal(1, result.FailureCount);
+        Assert.True(File.Exists(dupPath),
+            $"Duplicate at '{dupPath}' should have been restored after the hardlink failed.");
+        Assert.Equal(content, File.ReadAllBytes(dupPath));
+    }
+
+    [Fact]
+    public async Task Execute_HardLinkFails_NoStageFileLeftBehind()
+    {
+        using var temp = new TempDirectory();
+        var content = new byte[4096];
+        new Random(202).NextBytes(content);
+        temp.CreateFile("a/f.bin", content);
+        temp.CreateFile("b/f.bin", content);
+
+        var plan = await BuildPlanAsync(temp);
+        var dupPath = plan.Actions[0].DuplicatePath;
+        var dupDir = Path.GetDirectoryName(dupPath)!;
+
+        var executor = new DedupExecutor(
+            createHardLink: (_, _) => throw new IOException("simulated failure"));
+        await executor.ExecuteAsync(plan);
+
+        var staleStageFiles = Directory
+            .EnumerateFiles(dupDir, "*.pl-stage-*")
+            .ToArray();
+        Assert.Empty(staleStageFiles);
+    }
+
+    [Fact]
+    public async Task Execute_HardLinkFailsThenSecondActionSucceeds_ProcessesBothCorrectly()
+    {
+        using var temp = new TempDirectory();
+        var c1 = new byte[2048]; new Random(203).NextBytes(c1);
+        temp.CreateFile("g1/a.bin", c1);
+        temp.CreateFile("g1/b.bin", c1);
+        var c2 = new byte[2048]; new Random(204).NextBytes(c2);
+        temp.CreateFile("g2/a.bin", c2);
+        temp.CreateFile("g2/b.bin", c2);
+
+        var plan = await BuildPlanAsync(temp);
+        Assert.Equal(2, plan.Actions.Count);
+        var firstDup = plan.Actions[0].DuplicatePath;
+        var secondDup = plan.Actions[1].DuplicatePath;
+
+        var executor = new DedupExecutor(
+            createHardLink: (newLink, existing) =>
+            {
+                if (string.Equals(newLink, firstDup, StringComparison.OrdinalIgnoreCase))
+                    throw new IOException("simulated failure on first action only");
+                Win32Hardlink.CreateHardLink(newLink, existing);
+            });
+        var result = await executor.ExecuteAsync(plan);
+
+        Assert.Equal(1, result.SuccessCount);
+        Assert.Equal(1, result.FailureCount);
+        Assert.True(File.Exists(firstDup),
+            "First duplicate should have been restored after its hardlink failed.");
+        Assert.Equal(c1, File.ReadAllBytes(firstDup));
+
+        var infoSecondCanon = Win32Hardlink.GetFileInformation(plan.Actions[1].CanonicalPath);
+        var infoSecondDup = Win32Hardlink.GetFileInformation(secondDup);
+        Assert.Equal(infoSecondCanon.FileIndex, infoSecondDup.FileIndex);
+    }
+
+    [Fact]
+    public async Task Execute_HardLinkSucceeds_NoStageFileLeftBehind()
+    {
+        using var temp = new TempDirectory();
+        var content = new byte[4096];
+        new Random(205).NextBytes(content);
+        temp.CreateFile("a/f.bin", content);
+        temp.CreateFile("b/f.bin", content);
+
+        var plan = await BuildPlanAsync(temp);
+        var dupDir = Path.GetDirectoryName(plan.Actions[0].DuplicatePath)!;
+
+        var result = await new DedupExecutor().ExecuteAsync(plan);
+        Assert.Equal(1, result.SuccessCount);
+
+        var staleStageFiles = Directory
+            .EnumerateFiles(dupDir, "*.pl-stage-*")
+            .ToArray();
+        Assert.Empty(staleStageFiles);
+    }
+
+    // Group B — long-path E2E. Win32Hardlink.ToExtendedPath prepends \\?\ for
+    // paths >= 260 chars. These tests exercise it end-to-end to confirm the C#
+    // layer is path-length-safe (P0 #2 truncation is ShellExt-only).
+
+    [Fact]
+    public void Win32Hardlink_CreateHardLink_PathOver260Chars_Succeeds()
+    {
+        using var temp = new TempDirectory();
+        var deep = BuildDeepPath(temp.Path, minTotalLength: 320);
+        Directory.CreateDirectory(Path.GetDirectoryName(deep)!);
+        var content = new byte[1024];
+        new Random(301).NextBytes(content);
+        File.WriteAllBytes(deep, content);
+        Assert.True(deep.Length >= 320, $"Test setup: expected path >= 320 chars, got {deep.Length}.");
+
+        var linkPath = deep + ".link";
+        Win32Hardlink.CreateHardLink(linkPath, deep);
+
+        var info = Win32Hardlink.GetFileInformation(deep);
+        Assert.Equal(2u, info.HardLinkCount);
+        Assert.Equal(content.Length, info.SizeBytes);
+    }
+
+    [Fact]
+    public void Win32Hardlink_GetFileInformation_PathOver260Chars_ReturnsCorrectSize()
+    {
+        using var temp = new TempDirectory();
+        var deep = BuildDeepPath(temp.Path, minTotalLength: 300);
+        Directory.CreateDirectory(Path.GetDirectoryName(deep)!);
+        var content = new byte[2048];
+        new Random(302).NextBytes(content);
+        File.WriteAllBytes(deep, content);
+
+        var info = Win32Hardlink.GetFileInformation(deep);
+        Assert.Equal(content.Length, info.SizeBytes);
+        Assert.Equal(1u, info.HardLinkCount);
+    }
+
+    private static string BuildDeepPath(string root, int minTotalLength)
+    {
+        var sb = new System.Text.StringBuilder(root);
+        // ~30-char segment names — predictable, no spaces, no Windows reserved chars.
+        const string segment = "deep_segment_aaaaaaaaaaaaaaaaa";
+        const string fileTail = "\\file.bin";
+        while (sb.Length + fileTail.Length < minTotalLength)
+            sb.Append(Path.DirectorySeparatorChar).Append(segment);
+        sb.Append(fileTail);
+        return sb.ToString();
+    }
+
     private static async Task<DedupPlan> BuildPlanAsync(TempDirectory temp)
     {
         var scanner = new FileScanner();
