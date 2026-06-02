@@ -119,7 +119,13 @@ jobs:
             # vpk picks up GH_TOKEN from the env above. The explicit --token
             # flag was tempting but unverified against vpk 0.0.1298's CLI,
             # so we stick with the env-var contract that v0.3.x shipped on.
-            vpk download github --repoUrl https://github.com/${{ github.repository }}
+            #
+            # --outputDir MUST match the dir `vpk pack --outputDir` reads
+            # below. Without it, download writes the prior *-full.nupkg to
+            # vpk's default folder while pack only scans velopack-output, so
+            # pack never sees the prior release and every build ships
+            # full-only (no delta). Point both at velopack-output.
+            vpk download github --repoUrl https://github.com/${{ github.repository }} --outputDir velopack-output
             if ($LASTEXITCODE -ne 0) {
               Write-Error "vpk download failed despite prior stable release(s) existing on GitHub. Aborting to avoid shipping a release whose delta would be missing or corrupt."
               exit 1

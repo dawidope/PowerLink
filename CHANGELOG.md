@@ -5,6 +5,19 @@ loosely. The release workflow extracts the section matching the pushed tag
 (e.g. `v0.4.0` → `## [0.4.0]`) and uses it as the body of the GitHub release.
 The auto-generated PR/commit list still appears below it on the release page.
 
+## [0.5.1] — 2026-06-02
+
+### Fixed (release pipeline)
+
+- **Releases now ship a delta package again.** The `vpk download github`
+  step fetched the prior release's `*-full.nupkg` into vpk's default
+  folder, but `vpk pack --outputDir velopack-output` only scans
+  `velopack-output`. Pack therefore never saw the previous release and
+  every build shipped full-only, with no delta — forcing users to
+  re-download the whole app on each update. The download step now writes
+  to `--outputDir velopack-output` so pack finds the prior `*-full.nupkg`
+  and computes a proper `*-delta.nupkg`.
+
 ## [0.5.0] — 2026-04-20
 
 First release that handles **directory junctions** end-to-end. Junctions
