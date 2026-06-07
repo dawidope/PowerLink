@@ -78,8 +78,6 @@ Two flavors per tagged release on the [Releases](../../releases) page. Both bund
 
 Both are produced by [Velopack](https://velopack.io) and share the same auto-update mechanism — the app checks GitHub Releases, downloads the new package, and restarts itself. Setup.exe and Portable.zip are interchangeable in everything except the install footprint.
 
-> **Note:** Velopack-style binary deltas aren't being produced yet (the `vpk pack` step ships only `*-full.nupkg`), so each update downloads the full ~70 MB package rather than a small diff. Functionally fine, just not bandwidth-efficient. Tracked as a follow-up.
-
 First run triggers Windows SmartScreen (the binaries aren't code-signed yet) — click **More info → Run anyway**.
 
 Curated release notes for each version are in [CHANGELOG.md](CHANGELOG.md) and on each GitHub release page (the workflow extracts the matching section automatically).
