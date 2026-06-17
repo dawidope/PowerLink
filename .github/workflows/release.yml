@@ -71,7 +71,9 @@ jobs:
             'PowerLink.ShellExt.dll',
             'AppxManifest.xml',
             'Assets/Icon.ico',
-            'Assets/icon.png'
+            'Assets/icon.png',
+            'Microsoft.WindowsAppRuntime.Bootstrap.dll',
+            'Microsoft.ui.xaml.dll'
           )
           $missing = @()
           foreach ($f in $required) {

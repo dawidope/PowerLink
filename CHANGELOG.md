@@ -5,6 +5,22 @@ loosely. The release workflow extracts the section matching the pushed tag
 (e.g. `v0.4.0` → `## [0.4.0]`) and uses it as the body of the GitHub release.
 The auto-generated PR/commit list still appears below it on the release page.
 
+## [0.5.2] — 2026-06-17
+
+### Fixed
+
+- **The app launches without installing the Windows App Runtime
+  separately.** Both the Portable zip and the Setup were built
+  framework-dependent on the Windows App SDK — `SelfContained=true` only
+  bundled the .NET runtime, so at launch the bootstrapper demanded a
+  system-wide "Windows App Runtime 1.7" (MSIX >= `7000.522.1444.0`) and
+  aborted with *"Required components of the Windows App Runtime are
+  missing"* when it wasn't present, or when only an older 1.7 servicing
+  build was installed. The build is now `WindowsAppSDKSelfContained`, so
+  the Windows App Runtime ships inside the app folder and PowerLink runs
+  out-of-the-box with nothing else to install. The Portable zip and Setup
+  grow ~30–40 MB as a result.
+
 ## [0.5.1] — 2026-06-02
 
 ### Fixed (release pipeline)
