@@ -124,7 +124,7 @@
                      Title="Some folders were skipped"
                      Message="{x:Bind ViewModel.InaccessibleFoldersText, Mode=OneWay}">
                 <InfoBar.ActionButton>
-                    <Button Content="Restart as administrator"
+                    <Button Content="Run as admin"
                             Click="OnRestartAsAdminClick"
                             Visibility="{x:Bind ViewModel.RestartAsAdminVisibility}"/>
                 </InfoBar.ActionButton>

@@ -43,7 +43,7 @@
 
         <NavigationView.FooterMenuItems>
             <NavigationViewItem x:Name="RestartAsAdminItem"
-                                Content="Restart as administrator"
+                                Content="Run as admin"
                                 SelectsOnInvoked="False"
                                 Tapped="RestartAsAdminItem_Tapped"
                                 ToolTipService.ToolTip="Restart PowerLink with administrator rights to read protected folders">
