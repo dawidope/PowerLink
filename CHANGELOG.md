@@ -5,6 +5,13 @@ loosely. The release workflow extracts the section matching the pushed tag
 (e.g. `v0.4.0` → `## [0.4.0]`) and uses it as the body of the GitHub release.
 The auto-generated PR/commit list still appears below it on the release page.
 
+## [Unreleased]
+
+### Changed
+
+- The *Restart as administrator* button is now labelled **Run as admin**,
+  so it no longer gets cut off in the sidebar.
+
 ## [0.6.0] — 2026-11-02
 
 ### Added
