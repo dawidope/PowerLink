@@ -20,7 +20,14 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <TextBlock Grid.Row="0" Text="Settings" Style="{ThemeResource TitleTextBlockStyle}"/>
+            <StackPanel Grid.Row="0" Spacing="12">
+                <TextBlock Text="Settings" Style="{ThemeResource TitleTextBlockStyle}"/>
+                <InfoBar IsOpen="{x:Bind ViewModel.IsElevated}"
+                         IsClosable="False"
+                         Severity="Informational"
+                         Title="Running as administrator"
+                         Message="Explorer integration (context menu, drag-and-drop, Windows 11 menu) and updates can only be changed from PowerLink started normally — they're stored per user, and an administrator session may belong to a different account."/>
+            </StackPanel>
 
             <Border Grid.Row="1" CornerRadius="8" Padding="20" BorderThickness="1"
                     BorderBrush="{ThemeResource ControlElevationBorderBrush}"

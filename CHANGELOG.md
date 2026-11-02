@@ -19,7 +19,22 @@ The auto-generated PR/commit list still appears below it on the release page.
   (e.g. `System Volume Information`) stay unreadable even for
   administrators, and the warning says so.
 
+### Changed
+
+- **While running as administrator**, Explorer integration (context menu,
+  drag-and-drop, Windows 11 menu) and installing updates are disabled,
+  with a note at the top of Settings. These settings are stored per user,
+  and an administrator session may belong to a different account.
+  Change them from PowerLink started normally.
+- Mapped network drives and `subst` drives are passed to the administrator
+  copy as their real paths (`\\server\share\…`), because an elevated
+  session doesn't see the drive letters of the normal one.
+
 ### Fixed
+
+- *Restart Explorer* and *Clear icon cache* now only restart your own
+  Explorer. Run as administrator, they would also have killed Explorer for
+  other signed-in users (fast user switching, Remote Desktop).
 
 - **No more crash when PowerLink runs as administrator** ([#4]).
   The WinUI folder/file pickers (`Windows.Storage.Pickers`) fail with

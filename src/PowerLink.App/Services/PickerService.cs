@@ -72,7 +72,7 @@ public static class PickerService
         string? accepted = null;
         dialog.PrimaryButtonClick += (_, args) =>
         {
-            var path = NormalizePath(input.Text);
+            var path = PathInput.TryNormalize(input.Text);
             var exists = path is not null && (isFolder ? Directory.Exists(path) : File.Exists(path));
             if (!exists)
             {
@@ -88,22 +88,6 @@ public static class PickerService
 
         var result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary ? accepted : null;
-    }
-
-    // Accepts what "Copy as path" produces (wrapped in quotes) and rejects
-    // relative paths, which would silently resolve against the process cwd.
-    private static string? NormalizePath(string raw)
-    {
-        var s = raw.Trim().Trim('"').Trim();
-        if (s.Length == 0 || !Path.IsPathFullyQualified(s)) return null;
-        try
-        {
-            return Path.GetFullPath(s);
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return null;
-        }
     }
 
     private static IntPtr GetMainWindowHandle()

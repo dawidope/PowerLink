@@ -1,5 +1,6 @@
 using System.Security.AccessControl;
 using System.Security.Principal;
+using PowerLink.Core.Native;
 using PowerLink.Core.Scanning;
 using PowerLink.Core.Tests.TestHelpers;
 
@@ -81,18 +82,8 @@ public class FileScannerTests
         using var temp = new TempDirectory();
         temp.CreateFile("visible.txt", "a");
         temp.CreateFile("locked/hidden.txt", "b");
-        var locked = new DirectoryInfo(System.IO.Path.Combine(temp.Path, "locked"));
 
-        // A Deny ACE for the current user blocks listing even when the test
-        // runs elevated (admins only bypass it with SeBackupPrivilege enabled).
-        var deny = new FileSystemAccessRule(
-            WindowsIdentity.GetCurrent().User!,
-            FileSystemRights.ListDirectory,
-            AccessControlType.Deny);
-        var acl = locked.GetAccessControl();
-        acl.AddAccessRule(deny);
-        locked.SetAccessControl(acl);
-        try
+        using (DenyListing.On(System.IO.Path.Combine(temp.Path, "locked")))
         {
             var scanner = new FileScanner();
             var result = await scanner.ScanAsync(new[] { temp.Path });
@@ -101,11 +92,117 @@ public class FileScannerTests
             Assert.EndsWith("visible.txt", result[0].FullPath);
             Assert.Equal(1, scanner.InaccessibleDirectoryCount);
         }
+    }
+
+    [Fact]
+    public async Task Scan_AccessDeniedRoot_CountsOneAndReturnsEmpty()
+    {
+        using var temp = new TempDirectory();
+        temp.CreateFile("root/a.txt", "a");
+        var root = System.IO.Path.Combine(temp.Path, "root");
+
+        using (DenyListing.On(root))
+        {
+            var scanner = new FileScanner();
+            var result = await scanner.ScanAsync(new[] { root });
+
+            Assert.Empty(result);
+            Assert.Equal(1, scanner.InaccessibleDirectoryCount);
+        }
+    }
+
+    [Fact]
+    public async Task Scan_MultipleRoots_SumsInaccessibleCounts()
+    {
+        using var temp = new TempDirectory();
+        temp.CreateFile("r1/locked/a.txt", "a");
+        temp.CreateFile("r2/locked/b.txt", "b");
+        temp.CreateFile("r3/ok.txt", "c");
+
+        using (DenyListing.On(System.IO.Path.Combine(temp.Path, "r1", "locked")))
+        using (DenyListing.On(System.IO.Path.Combine(temp.Path, "r2", "locked")))
+        {
+            var scanner = new FileScanner();
+            var result = await scanner.ScanAsync(new[]
+            {
+                System.IO.Path.Combine(temp.Path, "r1"),
+                System.IO.Path.Combine(temp.Path, "r2"),
+                System.IO.Path.Combine(temp.Path, "r3"),
+            });
+
+            Assert.Single(result);
+            Assert.Equal(2, scanner.InaccessibleDirectoryCount);
+        }
+    }
+
+    [Fact]
+    public async Task Scan_SecondScan_ResetsInaccessibleCount()
+    {
+        using var temp = new TempDirectory();
+        temp.CreateFile("locked/a.txt", "a");
+        var scanner = new FileScanner();
+
+        using (DenyListing.On(System.IO.Path.Combine(temp.Path, "locked")))
+        {
+            await scanner.ScanAsync(new[] { temp.Path });
+            Assert.Equal(1, scanner.InaccessibleDirectoryCount);
+        }
+
+        var result = await scanner.ScanAsync(new[] { temp.Path });
+
+        Assert.Single(result);
+        Assert.Equal(0, scanner.InaccessibleDirectoryCount);
+    }
+
+    [Fact]
+    public async Task Scan_JunctionToDeniedFolder_IsNotFollowedNorCounted()
+    {
+        using var temp = new TempDirectory();
+        temp.CreateFile("scan/ok.txt", "a");
+        temp.CreateFile("elsewhere/secret.txt", "b");
+        var elsewhere = System.IO.Path.Combine(temp.Path, "elsewhere");
+        Win32Junction.Create(System.IO.Path.Combine(temp.Path, "scan", "link"), elsewhere);
+
+        using (DenyListing.On(elsewhere))
+        {
+            var scanner = new FileScanner();
+            var result = await scanner.ScanAsync(new[] { System.IO.Path.Combine(temp.Path, "scan") });
+
+            Assert.Single(result);
+            Assert.Equal(0, scanner.InaccessibleDirectoryCount);
+        }
+    }
+
+    [Fact]
+    public async Task Scan_HiddenAndSystemFiles_AreIncluded()
+    {
+        using var temp = new TempDirectory();
+        var hidden = temp.CreateFile("hidden.txt", "a");
+        var system = temp.CreateFile("system.txt", "b");
+        File.SetAttributes(hidden, FileAttributes.Hidden);
+        File.SetAttributes(system, FileAttributes.System);
+        try
+        {
+            var result = await new FileScanner().ScanAsync(new[] { temp.Path });
+            Assert.Equal(2, result.Count);
+        }
         finally
         {
-            acl.RemoveAccessRule(deny);
-            locked.SetAccessControl(acl);
+            File.SetAttributes(hidden, FileAttributes.Normal);
+            File.SetAttributes(system, FileAttributes.Normal);
         }
+    }
+
+    [Fact]
+    public async Task Scan_CancelledToken_Throws()
+    {
+        using var temp = new TempDirectory();
+        temp.CreateFile("a.txt", "a");
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => new FileScanner().ScanAsync(new[] { temp.Path }, cancellationToken: cts.Token));
     }
 
     [Fact]
@@ -118,5 +215,40 @@ public class FileScannerTests
         await scanner.ScanAsync(new[] { temp.Path });
 
         Assert.Equal(0, scanner.InaccessibleDirectoryCount);
+    }
+
+    // Adds a Deny-ListDirectory ACE for the current user and removes it on
+    // dispose (so TempDirectory can clean up). The deny applies even when the
+    // tests run elevated — admins only bypass it with SeBackupPrivilege on.
+    private sealed class DenyListing : IDisposable
+    {
+        private readonly DirectoryInfo _dir;
+        private readonly FileSystemAccessRule _rule;
+
+        private DenyListing(DirectoryInfo dir, FileSystemAccessRule rule)
+        {
+            _dir = dir;
+            _rule = rule;
+        }
+
+        public static DenyListing On(string path)
+        {
+            var dir = new DirectoryInfo(path);
+            var rule = new FileSystemAccessRule(
+                WindowsIdentity.GetCurrent().User!,
+                FileSystemRights.ListDirectory,
+                AccessControlType.Deny);
+            var acl = dir.GetAccessControl();
+            acl.AddAccessRule(rule);
+            dir.SetAccessControl(acl);
+            return new DenyListing(dir, rule);
+        }
+
+        public void Dispose()
+        {
+            var acl = _dir.GetAccessControl();
+            acl.RemoveAccessRule(_rule);
+            _dir.SetAccessControl(acl);
+        }
     }
 }

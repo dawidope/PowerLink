@@ -546,14 +546,38 @@ public static class ShellExtensionService
     {
         try
         {
-            foreach (var p in Process.GetProcessesByName("explorer"))
+            foreach (var p in GetOwnSessionExplorers())
             {
-                try { p.Kill(); } catch { /* explorer auto-restarts itself */ }
+                using (p)
+                {
+                    try { p.Kill(); } catch { /* explorer auto-restarts itself */ }
+                }
             }
         }
         catch
         {
             // Best effort. Windows respawns explorer.exe automatically.
+        }
+    }
+
+    // Only this logon session's Explorer. Elevated, GetProcessesByName also
+    // returns (and Kill succeeds on) other signed-in users' Explorers —
+    // fast user switching or RDP — which we must never touch.
+    private static IEnumerable<Process> GetOwnSessionExplorers()
+    {
+        int session;
+        using (var self = Process.GetCurrentProcess())
+            session = self.SessionId;
+
+        foreach (var p in Process.GetProcessesByName("explorer"))
+        {
+            bool ours;
+            try { ours = p.SessionId == session; }
+            catch (InvalidOperationException) { ours = false; } // exited meanwhile
+            if (ours)
+                yield return p;
+            else
+                p.Dispose();
         }
     }
 
@@ -568,9 +592,12 @@ public static class ShellExtensionService
         // Cache db files are locked while explorer.exe runs.
         try
         {
-            foreach (var p in Process.GetProcessesByName("explorer"))
+            foreach (var p in GetOwnSessionExplorers())
             {
-                try { p.Kill(); p.WaitForExit(2000); } catch { }
+                using (p)
+                {
+                    try { p.Kill(); p.WaitForExit(2000); } catch { }
+                }
             }
         }
         catch { }
