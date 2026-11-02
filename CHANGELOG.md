@@ -5,7 +5,7 @@ loosely. The release workflow extracts the section matching the pushed tag
 (e.g. `v0.4.0` → `## [0.4.0]`) and uses it as the body of the GitHub release.
 The auto-generated PR/commit list still appears below it on the release page.
 
-## [Unreleased]
+## [0.6.0] — 2026-11-02
 
 ### Added
 
@@ -32,10 +32,6 @@ The auto-generated PR/commit list still appears below it on the release page.
 
 ### Fixed
 
-- *Restart Explorer* and *Clear icon cache* now only restart your own
-  Explorer. Run as administrator, they would also have killed Explorer for
-  other signed-in users (fast user switching, Remote Desktop).
-
 - **No more crash when PowerLink runs as administrator** ([#4]).
   The WinUI folder/file pickers (`Windows.Storage.Pickers`) fail with
   `E_FAIL` in an elevated process, and the unhandled exception closed the
@@ -46,6 +42,9 @@ The auto-generated PR/commit list still appears below it on the release page.
 - Unhandled errors are now written to `%LocalAppData%\PowerLink\error.log`
   with a full stack trace, so crash reports carry more than a Windows
   Event Log entry.
+- *Restart Explorer* and *Clear icon cache* now only restart your own
+  Explorer. Run as administrator, they would also have killed Explorer for
+  other signed-in users (fast user switching, Remote Desktop).
 
 [#4]: https://github.com/dawidope/PowerLink/issues/4
 
