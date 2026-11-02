@@ -42,6 +42,16 @@
         </NavigationView.MenuItems>
 
         <NavigationView.FooterMenuItems>
+            <NavigationViewItem x:Name="RestartAsAdminItem"
+                                Content="Restart as administrator"
+                                SelectsOnInvoked="False"
+                                Tapped="RestartAsAdminItem_Tapped"
+                                ToolTipService.ToolTip="Restart PowerLink with administrator rights to read protected folders">
+                <NavigationViewItem.Icon>
+                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}"
+                              Glyph="&#xEA18;"/>
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
             <NavigationViewItem x:Name="ThemeToggleItem"
                                 Content="Dark mode"
                                 SelectsOnInvoked="False"

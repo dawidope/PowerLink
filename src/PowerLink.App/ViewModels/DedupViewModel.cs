@@ -72,6 +72,18 @@ public partial class DedupViewModel : ObservableObject
     [ObservableProperty] public partial double ProgressValue { get; set; }
     [ObservableProperty] public partial bool IsProgressIndeterminate { get; set; }
 
+    // Folders the last scan skipped for lack of permission. Drives the
+    // warning InfoBar with its "Restart as administrator" button.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasInaccessibleFolders))]
+    [NotifyPropertyChangedFor(nameof(InaccessibleFoldersText))]
+    public partial int InaccessibleFolderCount { get; set; }
+
+    public bool HasInaccessibleFolders => InaccessibleFolderCount > 0;
+    public string InaccessibleFoldersText => ElevationService.DescribeSkippedFolders(InaccessibleFolderCount);
+    public Visibility RestartAsAdminVisibility =>
+        ElevationService.IsElevated ? Visibility.Collapsed : Visibility.Visible;
+
     public DedupViewModel()
     {
         MinSizeMiB = 1;
@@ -106,6 +118,7 @@ public partial class DedupViewModel : ObservableObject
         Groups.Clear();
         Plan = null;
         SummaryText = null;
+        InaccessibleFolderCount = 0;
         StatusText = "Scanning...";
         ResetProgress(indeterminate: true);
 
@@ -118,6 +131,7 @@ public partial class DedupViewModel : ObservableObject
             var minBytes = (long)(MinSizeMiB * 1024 * 1024);
             var bufferBytes = BufferSizeKiB * 1024;
             var records = await _scanner.ScanAsync(Paths, minBytes, _cts.Token, progress);
+            InaccessibleFolderCount = _scanner.InaccessibleDirectoryCount;
             var result = await _engine.AnalyzeAsync(records, _cts.Token, progress, bufferBytes);
 
             foreach (var g in result.Groups)

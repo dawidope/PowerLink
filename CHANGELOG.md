@@ -7,6 +7,18 @@ The auto-generated PR/commit list still appears below it on the release page.
 
 ## [Unreleased]
 
+### Added
+
+- **Restart as administrator.** A new item at the bottom of the sidebar
+  restarts PowerLink with admin rights and reopens the current page with
+  the same folders, so you don't have to run the whole app elevated
+  all the time. While elevated, the title bar says *(Administrator)*.
+- **Skipped-folder warning.** Dedup and Inspector used to skip folders they
+  couldn't read without saying anything. They now show how many were
+  skipped, with a *Restart as administrator* button. Some system folders
+  (e.g. `System Volume Information`) stay unreadable even for
+  administrators, and the warning says so.
+
 ### Fixed
 
 - **No more crash when PowerLink runs as administrator** ([#4]).

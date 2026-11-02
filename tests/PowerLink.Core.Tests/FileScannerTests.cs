@@ -1,3 +1,5 @@
+using System.Security.AccessControl;
+using System.Security.Principal;
 using PowerLink.Core.Scanning;
 using PowerLink.Core.Tests.TestHelpers;
 
@@ -71,5 +73,50 @@ public class FileScannerTests
         var result = await scanner.ScanAsync(new[] { missing, temp.Path });
 
         Assert.Single(result);
+    }
+
+    [Fact]
+    public async Task Scan_AccessDeniedSubfolder_IsCountedAndSkipped()
+    {
+        using var temp = new TempDirectory();
+        temp.CreateFile("visible.txt", "a");
+        temp.CreateFile("locked/hidden.txt", "b");
+        var locked = new DirectoryInfo(System.IO.Path.Combine(temp.Path, "locked"));
+
+        // A Deny ACE for the current user blocks listing even when the test
+        // runs elevated (admins only bypass it with SeBackupPrivilege enabled).
+        var deny = new FileSystemAccessRule(
+            WindowsIdentity.GetCurrent().User!,
+            FileSystemRights.ListDirectory,
+            AccessControlType.Deny);
+        var acl = locked.GetAccessControl();
+        acl.AddAccessRule(deny);
+        locked.SetAccessControl(acl);
+        try
+        {
+            var scanner = new FileScanner();
+            var result = await scanner.ScanAsync(new[] { temp.Path });
+
+            Assert.Single(result);
+            Assert.EndsWith("visible.txt", result[0].FullPath);
+            Assert.Equal(1, scanner.InaccessibleDirectoryCount);
+        }
+        finally
+        {
+            acl.RemoveAccessRule(deny);
+            locked.SetAccessControl(acl);
+        }
+    }
+
+    [Fact]
+    public async Task Scan_ReadableTree_ReportsNoInaccessibleDirectories()
+    {
+        using var temp = new TempDirectory();
+        temp.CreateFile("sub/a.txt", "a");
+
+        var scanner = new FileScanner();
+        await scanner.ScanAsync(new[] { temp.Path });
+
+        Assert.Equal(0, scanner.InaccessibleDirectoryCount);
     }
 }

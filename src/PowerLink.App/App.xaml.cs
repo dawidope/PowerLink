@@ -10,7 +10,31 @@ namespace PowerLink.App;
 
 public enum LaunchMode { Dedup, Inspect, Clone, Junction }
 
-public sealed record LaunchPreset(LaunchMode Mode, string Path);
+// Paths holds every `--<mode> <path>` pair for the first mode on the command
+// line, so a relaunch can carry all folders from the Dedup / Inspector list.
+public sealed record LaunchPreset(LaunchMode Mode, IReadOnlyList<string> Paths)
+{
+    public static string Flag(LaunchMode mode) => mode switch
+    {
+        LaunchMode.Dedup => "--dedup",
+        LaunchMode.Inspect => "--inspect",
+        LaunchMode.Clone => "--clone",
+        LaunchMode.Junction => "--junction",
+        _ => throw new ArgumentOutOfRangeException(nameof(mode)),
+    };
+
+    public static LaunchMode? ModeFromFlag(string arg) => arg switch
+    {
+        "--dedup" => LaunchMode.Dedup,
+        "--inspect" => LaunchMode.Inspect,
+        "--clone" => LaunchMode.Clone,
+        "--junction" => LaunchMode.Junction,
+        _ => null,
+    };
+
+    public IEnumerable<string> ToArguments() =>
+        Paths.SelectMany(p => new[] { Flag(Mode), p });
+}
 
 public partial class App : Application
 {
@@ -18,6 +42,11 @@ public partial class App : Application
     private DispatcherQueue? _dispatcher;
 
     public static MainWindow? MainAppWindow => _windows.LastOrDefault();
+
+    // The window hosting a given element — pages use it to reach their own
+    // MainWindow when several windows are open.
+    public static MainWindow? WindowFor(UIElement element) =>
+        _windows.FirstOrDefault(w => w.Content?.XamlRoot == element.XamlRoot);
 
     public App()
     {
@@ -99,20 +128,19 @@ public partial class App : Application
 
     private static LaunchPreset? ParsePreset(string[] argv)
     {
+        LaunchMode? mode = null;
+        var paths = new List<string>();
         for (var i = 1; i < argv.Length - 1; i++)
         {
-            LaunchMode? mode = argv[i] switch
-            {
-                "--dedup" => LaunchMode.Dedup,
-                "--inspect" => LaunchMode.Inspect,
-                "--clone" => LaunchMode.Clone,
-                "--junction" => LaunchMode.Junction,
-                _ => null,
-            };
-            if (mode is not null)
-                return new LaunchPreset(mode.Value, argv[i + 1]);
+            var current = LaunchPreset.ModeFromFlag(argv[i]);
+            if (current is null) continue;
+
+            mode ??= current;
+            if (current == mode)
+                paths.Add(argv[i + 1]);
+            i++; // skip the path we just consumed
         }
-        return null;
+        return mode is null ? null : new LaunchPreset(mode.Value, paths);
     }
 
     private static string[] ParseCommandLine(string cmdLine)
