@@ -62,10 +62,13 @@
   <!-- Modern-menu / drag-drop shell extensions spawn PowerLink.Cli.exe from the
        DLL's folder. In dev layout Cli lives in its own sibling project, so after
        the App build we mirror Cli's output dir alongside App.exe. -->
+  <!-- The path must include $(Platform): App builds as x64/ARM64, so Cli
+       lands in bin\<Platform>\<Config>. A platform-less path picked up a
+       stale AnyCPU build and overwrote App's fresh PowerLink.Core.dll. -->
   <Target Name="CopyCliOutput" AfterTargets="Build">
     <ItemGroup>
-      <_CliOutputFiles Include="..\PowerLink.Cli\bin\$(Configuration)\net8.0-windows\*.*"
-                       Exclude="..\PowerLink.Cli\bin\$(Configuration)\net8.0-windows\*.xml" />
+      <_CliOutputFiles Include="..\PowerLink.Cli\bin\$(Platform)\$(Configuration)\net8.0-windows\*.*"
+                       Exclude="..\PowerLink.Cli\bin\$(Platform)\$(Configuration)\net8.0-windows\*.xml" />
     </ItemGroup>
     <Copy SourceFiles="@(_CliOutputFiles)"
           DestinationFolder="$(OutDir)"
