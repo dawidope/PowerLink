@@ -5,6 +5,23 @@ loosely. The release workflow extracts the section matching the pushed tag
 (e.g. `v0.4.0` → `## [0.4.0]`) and uses it as the body of the GitHub release.
 The auto-generated PR/commit list still appears below it on the release page.
 
+## [Unreleased]
+
+### Fixed
+
+- **No more crash when PowerLink runs as administrator** ([#4]).
+  The WinUI folder/file pickers (`Windows.Storage.Pickers`) fail with
+  `E_FAIL` in an elevated process, and the unhandled exception closed the
+  app as soon as you clicked *Add folder* or *Browse*. PowerLink now uses
+  the classic Windows file dialog, which works both elevated and not. If
+  even that dialog fails, you get a box to paste the path instead of a
+  crash.
+- Unhandled errors are now written to `%LocalAppData%\PowerLink\error.log`
+  with a full stack trace, so crash reports carry more than a Windows
+  Event Log entry.
+
+[#4]: https://github.com/dawidope/PowerLink/issues/4
+
 ## [0.5.2] — 2026-06-17
 
 ### Fixed

@@ -22,6 +22,11 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+
+        // Log only — we don't mark it Handled, because continuing after an
+        // unknown UI-thread failure risks acting on half-updated state.
+        UnhandledException += (_, e) =>
+            Services.ErrorLog.Write("XAML.UnhandledException", e.Exception, e.Message);
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
