@@ -5,7 +5,7 @@ loosely. The release workflow extracts the section matching the pushed tag
 (e.g. `v0.4.0` → `## [0.4.0]`) and uses it as the body of the GitHub release.
 The auto-generated PR/commit list still appears below it on the release page.
 
-## [Unreleased]
+## [0.6.1] — 2026-11-02
 
 ### Changed
 
