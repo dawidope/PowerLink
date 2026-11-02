@@ -34,6 +34,11 @@ public static class Program
         if (VelopackShellShim.IsRunningFromVelopackInstall(AppContext.BaseDirectory))
             TryEnsureShellJunction("ColdStart");
 
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            ErrorLog.Write("AppDomain.UnhandledException", e.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+            ErrorLog.Write("TaskScheduler.UnobservedTaskException", e.Exception);
+
         WinRT.ComWrappersSupport.InitializeComWrappers();
 
         // Capture whatever activation payload launched this process BEFORE any
