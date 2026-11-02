@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Security.Principal;
+using PowerLink.Core.Native;
 
 namespace PowerLink.App.Services;
 
@@ -27,8 +28,16 @@ public static class ElevationService
         // ArgumentList quotes each path correctly, including trailing
         // backslashes like "C:\" that a hand-built string would break.
         if (preset is not null)
-            foreach (var arg in preset.ToArguments())
+        {
+            // The elevated copy runs in another logon session and can't see
+            // this session's mapped (Z:) or subst drives — rewrite them first.
+            var portable = preset with
+            {
+                Paths = preset.Paths.Select(DrivePaths.ToSessionIndependentPath).ToList(),
+            };
+            foreach (var arg in portable.ToArguments())
                 psi.ArgumentList.Add(arg);
+        }
 
         try
         {

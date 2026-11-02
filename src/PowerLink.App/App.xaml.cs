@@ -8,34 +8,6 @@ using WinRtActivation = Windows.ApplicationModel.Activation;
 
 namespace PowerLink.App;
 
-public enum LaunchMode { Dedup, Inspect, Clone, Junction }
-
-// Paths holds every `--<mode> <path>` pair for the first mode on the command
-// line, so a relaunch can carry all folders from the Dedup / Inspector list.
-public sealed record LaunchPreset(LaunchMode Mode, IReadOnlyList<string> Paths)
-{
-    public static string Flag(LaunchMode mode) => mode switch
-    {
-        LaunchMode.Dedup => "--dedup",
-        LaunchMode.Inspect => "--inspect",
-        LaunchMode.Clone => "--clone",
-        LaunchMode.Junction => "--junction",
-        _ => throw new ArgumentOutOfRangeException(nameof(mode)),
-    };
-
-    public static LaunchMode? ModeFromFlag(string arg) => arg switch
-    {
-        "--dedup" => LaunchMode.Dedup,
-        "--inspect" => LaunchMode.Inspect,
-        "--clone" => LaunchMode.Clone,
-        "--junction" => LaunchMode.Junction,
-        _ => null,
-    };
-
-    public IEnumerable<string> ToArguments() =>
-        Paths.SelectMany(p => new[] { Flag(Mode), p });
-}
-
 public partial class App : Application
 {
     private static readonly List<MainWindow> _windows = new();
@@ -126,22 +98,9 @@ public partial class App : Application
         return ParsePreset(argv);
     }
 
-    private static LaunchPreset? ParsePreset(string[] argv)
-    {
-        LaunchMode? mode = null;
-        var paths = new List<string>();
-        for (var i = 1; i < argv.Length - 1; i++)
-        {
-            var current = LaunchPreset.ModeFromFlag(argv[i]);
-            if (current is null) continue;
-
-            mode ??= current;
-            if (current == mode)
-                paths.Add(argv[i + 1]);
-            i++; // skip the path we just consumed
-        }
-        return mode is null ? null : new LaunchPreset(mode.Value, paths);
-    }
+    // argv in Environment.GetCommandLineArgs() form: [0] is the exe path.
+    private static LaunchPreset? ParsePreset(string[] argv) =>
+        LaunchPreset.Parse(argv.Skip(1).ToArray());
 
     private static string[] ParseCommandLine(string cmdLine)
     {

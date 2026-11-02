@@ -157,7 +157,7 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanEditPerUserShellIntegration))]
     private void ApplyChanges()
     {
         try
@@ -194,7 +194,7 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanEditPerUserShellIntegration))]
     private void UninstallAll()
     {
         try
@@ -288,7 +288,7 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanEditPerUserShellIntegration))]
     private void ApplyDropChanges()
     {
         var install = DropVerbs.Any(v => v.ShouldInstall && !v.IsInstalled);
@@ -336,7 +336,7 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanEditPerUserShellIntegration))]
     private async Task ApplyModernChangesAsync()
     {
         var install = ModernVerbs.Any(v => v.ShouldInstall && !v.IsInstalled);
@@ -393,7 +393,9 @@ public partial class SettingsViewModel : ObservableObject
                 case UpdateAvailability.Available:
                     _pendingUpdate = result.VelopackInfo;
                     IsUpdateAvailable = true;
-                    UpdateStatus = IsVelopackInstalled
+                    UpdateStatus = ElevationService.IsElevated && IsVelopackInstalled
+                        ? $"Update available: v{result.AvailableVersion}. Open PowerLink normally (not as administrator) to install it."
+                        : IsVelopackInstalled
                         ? $"Update available: v{result.AvailableVersion}. Click Install to apply."
                         : $"Update available: v{result.AvailableVersion}. Open the Releases page to grab Setup.exe or Portable.zip.";
                     break;
@@ -427,8 +429,19 @@ public partial class SettingsViewModel : ObservableObject
     private void OpenReleasesPage() => _updateService.OpenReleasesPage();
 
     private bool CanCheckForUpdates() => !IsCheckingForUpdates && !IsInstallingUpdate;
+    // Blocked while elevated: Velopack would restart the updated app as
+    // admin, and files it writes would be owned by Administrators.
     private bool CanInstallUpdate() =>
-        IsUpdateAvailable && IsVelopackInstalled && !IsCheckingForUpdates && !IsInstallingUpdate;
+        IsUpdateAvailable && IsVelopackInstalled && !IsCheckingForUpdates && !IsInstallingUpdate
+        && !ElevationService.IsElevated;
+
+    // Context-menu, drop-handler and modern-menu registrations are per-user
+    // (HKCU + per-user package). If elevation used a different admin account,
+    // they'd land in that account instead of the user's — so only allow
+    // changes from the normal, non-elevated app.
+    private static bool CanEditPerUserShellIntegration() => !ElevationService.IsElevated;
+
+    public bool IsElevated => ElevationService.IsElevated;
 
     [RelayCommand]
     private void RestartExplorer()
