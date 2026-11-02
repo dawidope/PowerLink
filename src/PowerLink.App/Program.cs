@@ -45,7 +45,14 @@ public static class Program
         // hand-off so we can pass the real args to the primary if we turn out
         // to be secondary.
         var activation = AppInstance.GetCurrent().GetActivatedEventArgs();
-        var instance = AppInstance.FindOrRegisterForKey("PowerLink.App.SingleInstance");
+        // Elevated and normal copies use separate keys. Otherwise "Restart as
+        // administrator" would redirect straight back to the normal instance,
+        // and Explorer verbs (always non-elevated) would try to redirect
+        // across integrity levels into the admin process.
+        var instanceKey = ElevationService.IsElevated
+            ? "PowerLink.App.SingleInstance.Admin"
+            : "PowerLink.App.SingleInstance";
+        var instance = AppInstance.FindOrRegisterForKey(instanceKey);
 
         if (!instance.IsCurrent)
         {

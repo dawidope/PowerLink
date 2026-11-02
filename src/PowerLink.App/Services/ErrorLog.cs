@@ -1,5 +1,3 @@
-using System.Security.Principal;
-
 namespace PowerLink.App.Services;
 
 // Append-only error log next to Velopack's install root, so crashes leave a
@@ -18,7 +16,7 @@ public static class ErrorLog
         try
         {
             var line = $"[{DateTime.UtcNow:O}] {source} pid={Environment.ProcessId} " +
-                       $"elevated={IsElevated()}" +
+                       $"elevated={ElevationService.IsElevated}" +
                        (note is null ? "" : $" note={note}") +
                        Environment.NewLine +
                        (ex?.ToString() ?? "(no exception object)") +
@@ -33,19 +31,6 @@ public static class ErrorLog
         catch
         {
             // Logging must never be the thing that takes the app down.
-        }
-    }
-
-    private static bool IsElevated()
-    {
-        try
-        {
-            using var id = WindowsIdentity.GetCurrent();
-            return new WindowsPrincipal(id).IsInRole(WindowsBuiltInRole.Administrator);
-        }
-        catch
-        {
-            return false;
         }
     }
 }

@@ -5,8 +5,13 @@ using PowerLink.App.ViewModels;
 
 namespace PowerLink.App.Pages;
 
-public sealed partial class DedupPage : Page
+public sealed partial class DedupPage : Page, IRelaunchState
 {
+    bool IRelaunchState.IsBusy => ViewModel.IsScanning || ViewModel.IsExecuting;
+
+    LaunchPreset? IRelaunchState.CaptureLaunchPreset() =>
+        ViewModel.Paths.Count == 0 ? null : new LaunchPreset(LaunchMode.Dedup, ViewModel.Paths.ToList());
+
     public DedupViewModel ViewModel { get; } = new();
 
     public DedupPage()
@@ -21,12 +26,17 @@ public sealed partial class DedupPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-        if (e.Parameter is string path
-            && Directory.Exists(path)
-            && !ViewModel.Paths.Contains(path))
+        if (e.Parameter is not IReadOnlyList<string> paths) return;
+        foreach (var path in paths)
         {
-            ViewModel.Paths.Add(path);
+            if (Directory.Exists(path) && !ViewModel.Paths.Contains(path))
+                ViewModel.Paths.Add(path);
         }
+    }
+
+    private void OnRestartAsAdminClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        _ = App.WindowFor(this)?.RestartAsAdministratorAsync();
     }
 
     private void OnScanAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)

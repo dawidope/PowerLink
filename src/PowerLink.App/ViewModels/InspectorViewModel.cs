@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI.Xaml;
 using PowerLink.App.Services;
 using PowerLink.Core.Models;
 using PowerLink.Core.Native;
@@ -30,6 +31,18 @@ public partial class InspectorViewModel : ObservableObject
     [ObservableProperty] public partial bool IsProgressIndeterminate { get; set; }
     [ObservableProperty] public partial string? CurrentFileText { get; set; }
     [ObservableProperty] public partial string? FilesText { get; set; }
+
+    // Folders the last scan skipped for lack of permission. Drives the
+    // warning InfoBar with its "Restart as administrator" button.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasInaccessibleFolders))]
+    [NotifyPropertyChangedFor(nameof(InaccessibleFoldersText))]
+    public partial int InaccessibleFolderCount { get; set; }
+
+    public bool HasInaccessibleFolders => InaccessibleFolderCount > 0;
+    public string InaccessibleFoldersText => ElevationService.DescribeSkippedFolders(InaccessibleFolderCount);
+    public Visibility RestartAsAdminVisibility =>
+        ElevationService.IsElevated ? Visibility.Collapsed : Visibility.Visible;
 
     public string HardlinksHeader => $"Hardlinks ({Groups.Count:N0})";
     public string JunctionsHeader
@@ -83,6 +96,7 @@ public partial class InspectorViewModel : ObservableObject
         Groups.Clear();
         Junctions.Clear();
         SummaryText = null;
+        InaccessibleFolderCount = 0;
         StatusText = "Scanning...";
         IsProgressIndeterminate = true;
         ProgressValue = 0;
@@ -95,6 +109,7 @@ public partial class InspectorViewModel : ObservableObject
         try
         {
             var records = await _scanner.ScanAsync(Paths, minSizeBytes: 0, _cts.Token, progress);
+            InaccessibleFolderCount = _scanner.InaccessibleDirectoryCount;
 
             // Group by (volume, fileIndex) — same underlying physical file.
             // HardLinkCount from MFT tells us total links across the whole

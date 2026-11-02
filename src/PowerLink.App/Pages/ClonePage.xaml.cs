@@ -5,8 +5,15 @@ using PowerLink.App.ViewModels;
 
 namespace PowerLink.App.Pages;
 
-public sealed partial class ClonePage : Page
+public sealed partial class ClonePage : Page, IRelaunchState
 {
+    bool IRelaunchState.IsBusy => ViewModel.IsRunning;
+
+    LaunchPreset? IRelaunchState.CaptureLaunchPreset() =>
+        string.IsNullOrWhiteSpace(ViewModel.SourcePath)
+            ? null
+            : new LaunchPreset(LaunchMode.Clone, new[] { ViewModel.SourcePath });
+
     public CloneViewModel ViewModel { get; } = new();
 
     public ClonePage()
@@ -21,7 +28,9 @@ public sealed partial class ClonePage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-        if (e.Parameter is string path && (Directory.Exists(path) || File.Exists(path)))
+        if (e.Parameter is IReadOnlyList<string> { Count: > 0 } paths
+            && paths[0] is var path
+            && (Directory.Exists(path) || File.Exists(path)))
         {
             ViewModel.SourcePath = path;
         }

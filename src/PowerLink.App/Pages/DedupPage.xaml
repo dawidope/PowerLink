@@ -166,6 +166,17 @@
             </Grid>
             <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"/>
             <TextBlock Text="{x:Bind ViewModel.SummaryText, Mode=OneWay}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            <InfoBar IsOpen="{x:Bind ViewModel.HasInaccessibleFolders, Mode=OneWay}"
+                     IsClosable="False"
+                     Severity="Warning"
+                     Title="Some folders were skipped"
+                     Message="{x:Bind ViewModel.InaccessibleFoldersText, Mode=OneWay}">
+                <InfoBar.ActionButton>
+                    <Button Content="Restart as administrator"
+                            Click="OnRestartAsAdminClick"
+                            Visibility="{x:Bind ViewModel.RestartAsAdminVisibility}"/>
+                </InfoBar.ActionButton>
+            </InfoBar>
         </StackPanel>
 
         <Grid Grid.Row="7" RowSpacing="8"

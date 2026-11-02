@@ -1,3 +1,4 @@
+using System.IO.Enumeration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using PowerLink.Core.Models;
@@ -14,6 +15,11 @@ public class FileScanner
         _logger = logger ?? NullLogger<FileScanner>.Instance;
     }
 
+    // Folders the last ScanAsync call couldn't read because of missing
+    // permissions (ERROR_ACCESS_DENIED). They're skipped, so the results are
+    // incomplete — the UI uses this to offer "Restart as administrator".
+    public int InaccessibleDirectoryCount { get; private set; }
+
     public async Task<IReadOnlyList<FileRecord>> ScanAsync(
         IEnumerable<string> roots,
         long minSizeBytes = 0,
@@ -25,11 +31,14 @@ public class FileScanner
 
         var records = new List<FileRecord>();
         long processed = 0;
+        InaccessibleDirectoryCount = 0;
 
+        // IgnoreInaccessible stays off: AccessDeniedCountingEnumerator skips
+        // those errors itself so it can count them.
         var enumerationOptions = new EnumerationOptions
         {
             RecurseSubdirectories = true,
-            IgnoreInaccessible = true,
+            IgnoreInaccessible = false,
             AttributesToSkip = FileAttributes.ReparsePoint,
             ReturnSpecialDirectories = false,
         };
@@ -46,8 +55,10 @@ public class FileScanner
                     continue;
                 }
 
-                foreach (var path in Directory.EnumerateFiles(root, "*", enumerationOptions))
+                using var files = new AccessDeniedCountingEnumerator(root, enumerationOptions);
+                while (files.MoveNext())
                 {
+                    var path = files.Current;
                     cancellationToken.ThrowIfCancellationRequested();
 
                     try
@@ -83,6 +94,8 @@ public class FileScanner
                         _logger.LogDebug(ex, "Skipping unreadable file: {Path}", path);
                     }
                 }
+
+                InaccessibleDirectoryCount += files.AccessDeniedCount;
             }
         }, cancellationToken);
 
@@ -94,5 +107,37 @@ public class FileScanner
         });
 
         return records;
+    }
+}
+
+// Same as Directory.EnumerateFiles(root, "*", options), except that it
+// counts directories it had to skip because of ERROR_ACCESS_DENIED instead
+// of dropping them silently.
+internal sealed class AccessDeniedCountingEnumerator : FileSystemEnumerator<string>
+{
+    private const int ErrorAccessDenied = 5;
+    private const int ErrorSharingViolation = 32;
+
+    public AccessDeniedCountingEnumerator(string directory, EnumerationOptions options)
+        : base(directory, options)
+    {
+    }
+
+    public int AccessDeniedCount { get; private set; }
+
+    protected override bool ShouldIncludeEntry(ref FileSystemEntry entry) => !entry.IsDirectory;
+
+    protected override string TransformEntry(ref FileSystemEntry entry) => entry.ToFullPath();
+
+    // Called for directories that fail to open. Matches what
+    // IgnoreInaccessible=true skipped, plus a count of the access-denied ones.
+    protected override bool ContinueOnError(int error)
+    {
+        if (error == ErrorAccessDenied)
+        {
+            AccessDeniedCount++;
+            return true;
+        }
+        return error == ErrorSharingViolation;
     }
 }

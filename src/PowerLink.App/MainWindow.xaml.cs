@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Windowing;
 using PowerLink.App.Pages;
+using PowerLink.App.Services;
 
 namespace PowerLink.App;
 
@@ -17,10 +18,63 @@ public sealed partial class MainWindow : Window
     {
         _preset = preset;
         InitializeComponent();
-        Title = "PowerLink";
+        Title = ElevationService.IsElevated ? "PowerLink (Administrator)" : "PowerLink";
+        if (ElevationService.IsElevated)
+            RestartAsAdminItem.Visibility = Visibility.Collapsed;
+        ContentFrame.Navigated += (_, e) =>
+        {
+            if (e.Content is IRelaunchState page) _visitedPages.Add(page);
+        };
         SetWindowIcon();
         SetMicaBackdrop();
         NavigateInitialPage();
+    }
+
+    // Pages are cached (NavigationCacheMode.Required), so a scan can keep
+    // running on a page the user navigated away from. Track every page
+    // instance we've shown so the busy check covers all of them.
+    private readonly HashSet<IRelaunchState> _visitedPages = new();
+
+    public async Task RestartAsAdministratorAsync()
+    {
+        if (_visitedPages.Any(p => p.IsBusy))
+        {
+            await ShowMessageAsync("Operation in progress",
+                "Stop the current scan or operation, or wait for it to finish, then try again.");
+            return;
+        }
+
+        var preset = (ContentFrame.Content as IRelaunchState)?.CaptureLaunchPreset();
+        try
+        {
+            if (!ElevationService.TryStartElevated(preset))
+                return; // UAC prompt declined — keep this window as is.
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("RestartAsAdministrator", ex);
+            await ShowMessageAsync("Couldn't restart as administrator", ex.Message);
+            return;
+        }
+
+        Close();
+    }
+
+    private async Task ShowMessageAsync(string title, string message)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = title,
+            Content = message,
+            CloseButtonText = "OK",
+        };
+        await dialog.ShowAsync();
+    }
+
+    private void RestartAsAdminItem_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        _ = RestartAsAdministratorAsync();
     }
 
     private void NavigateInitialPage()
@@ -54,7 +108,7 @@ public sealed partial class MainWindow : Window
             }
         }
 
-        ContentFrame.Navigate(pageType, preset.Path);
+        ContentFrame.Navigate(pageType, preset.Paths);
     }
 
     private bool _suppressNavigate;
